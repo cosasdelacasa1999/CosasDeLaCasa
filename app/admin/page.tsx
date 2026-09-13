@@ -8,20 +8,60 @@ import {
   PlusCircle, 
   Upload, 
   Trash2, 
-  CheckCircle2, 
-  XCircle, 
   LogOut, 
   Image as ImageIcon,
   FolderPlus,
   ArrowLeft,
   Edit2,
-  X
+  X,
+  Star
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
 const CONDICIONES = ["Nuevo", "Usado como nuevo", "Usado", "Muy usado"];
 const FUNCIONALIDADES = ["Operativo", "Casi operativo", "Para repuestos"];
+
+// Utilidad para comprimir fotos del móvil antes de subir a Supabase
+async function comprimirImagen(file: File): Promise<Blob> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDimension = 1280;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height && width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            resolve(blob || file);
+          },
+          "image/jpeg",
+          0.75
+        );
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+}
 
 export default function AdminDashboard() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -44,6 +84,7 @@ export default function AdminDashboard() {
   const [archivos, setArchivos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [subiendo, setSubiendo] = useState(false);
+  const [estadoSubida, setEstadoSubida] = useState("");
 
   // Nueva Categoría
   const [nuevaCat, setNuevaCat] = useState("");
@@ -106,10 +147,23 @@ export default function AdminDashboard() {
   };
 
   const eliminarFotoSeleccionada = (index: number) => {
-    const nuevosArchivos = archivos.filter((_, i) => i !== index);
-    const nuevasPreviews = previews.filter((_, i) => i !== index);
-    setArchivos(nuevosArchivos);
-    setPreviews(nuevasPreviews);
+    setArchivos((prev) => prev.filter((_, i) => i !== index));
+    setPreviews((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Mueve la foto seleccionada a la primera posición (Portada)
+  const definirComoPortada = (index: number) => {
+    if (index === 0) return;
+    setArchivos((prev) => {
+      const item = prev[index];
+      const rest = prev.filter((_, i) => i !== index);
+      return [item, ...rest];
+    });
+    setPreviews((prev) => {
+      const item = prev[index];
+      const rest = prev.filter((_, i) => i !== index);
+      return [item, ...rest];
+    });
   };
 
   const iniciarEdicion = (item: Producto) => {
@@ -123,7 +177,7 @@ export default function AdminDashboard() {
     setCantidad(String(item.cantidad ?? 1));
     setCategoriaId(item.categoria_id || (categorias[0]?.id ?? ""));
     setArchivos([]);
-    setPreviews([]);
+    setPreviews(item.fotos || []);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -144,25 +198,43 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!titulo || !precio || !categoriaId) return;
     setSubiendo(true);
+    setEstadoSubida("Procesando fotos...");
 
     try {
-      if (editandoId) {
-        let urlsFotosNuevas: string[] = [];
+      let urlsFotos: string[] = [];
 
-        if (archivos.length > 0) {
-          for (const file of archivos) {
-            const fileExt = file.name.split(".").pop();
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const { error: uploadError } = await supabase.storage.from("productos").upload(fileName, file);
-            if (!uploadError) {
-              const { data } = supabase.storage.from("productos").getPublicUrl(fileName);
-              urlsFotosNuevas.push(data.publicUrl);
-            }
+      // Subir fotos nuevas comprimidas
+      if (archivos.length > 0) {
+        for (let i = 0; i < archivos.length; i++) {
+          setEstadoSubida(`Subiendo foto ${i + 1} de ${archivos.length}...`);
+          const file = archivos[i];
+          const blobComprimido = await comprimirImagen(file);
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("productos")
+            .upload(fileName, blobComprimido, {
+              contentType: "image/jpeg",
+              upsert: false
+            });
+
+          if (uploadError) {
+            console.error("Error al subir imagen:", uploadError);
+            alert(`Error subiendo imagen: ${uploadError.message}`);
+            continue;
           }
-        }
 
+          const { data } = supabase.storage.from("productos").getPublicUrl(fileName);
+          urlsFotos.push(data.publicUrl);
+        }
+      }
+
+      setEstadoSubida("Guardando en inventario...");
+
+      if (editandoId) {
+        const prodExistente = productos.find((p) => p.id === editandoId);
         const updatePayload: any = {
-          titulo,
+          titulo: titulo.trim(),
           marca: marca.trim() || null,
           condicion,
           funcionalidad,
@@ -172,26 +244,19 @@ export default function AdminDashboard() {
           categoria_id: categoriaId,
         };
 
-        if (urlsFotosNuevas.length > 0) {
-          updatePayload.fotos = urlsFotosNuevas;
+        // Si seleccionó fotos nuevas, reemplaza; si no, conserva las actuales
+        if (urlsFotos.length > 0) {
+          updatePayload.fotos = urlsFotos;
+        } else if (previews.length > 0 && prodExistente) {
+          updatePayload.fotos = previews;
         }
 
-        await supabase.from("productos").update(updatePayload).eq("id", editandoId);
+        const { error: updateError } = await supabase.from("productos").update(updatePayload).eq("id", editandoId);
+        if (updateError) throw updateError;
         cancelarEdicion();
       } else {
-        const urlsFotos: string[] = [];
-        for (const file of archivos) {
-          const fileExt = file.name.split(".").pop();
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage.from("productos").upload(fileName, file);
-          if (!uploadError) {
-            const { data } = supabase.storage.from("productos").getPublicUrl(fileName);
-            urlsFotos.push(data.publicUrl);
-          }
-        }
-
-        await supabase.from("productos").insert({
-          titulo,
+        const { error: insertError } = await supabase.from("productos").insert({
+          titulo: titulo.trim(),
           marca: marca.trim() || null,
           condicion,
           funcionalidad,
@@ -203,13 +268,18 @@ export default function AdminDashboard() {
           estado: "disponible",
         });
 
+        if (insertError) throw insertError;
         cancelarEdicion();
       }
-      cargarDatos();
-    } catch (err) {
+
+      await cargarDatos();
+      alert("¡Guardado con éxito!");
+    } catch (err: any) {
       console.error(err);
+      alert(`Error al guardar: ${err.message || "Verifica tu conexión"}`);
     } finally {
       setSubiendo(false);
+      setEstadoSubida("");
     }
   };
 
@@ -220,27 +290,25 @@ export default function AdminDashboard() {
   };
 
   const eliminarProducto = async (id: string) => {
-  if (!confirm("¿Eliminar este artículo del inventario?")) return;
+    if (!confirm("¿Eliminar este artículo del inventario?")) return;
 
-  // 1. Obtener las fotos del producto para borrarlas de Storage
-  const prodAEliminar = productos.find((p) => p.id === id);
-  if (prodAEliminar && prodAEliminar.fotos && prodAEliminar.fotos.length > 0) {
-    const pathsParaBorrar = prodAEliminar.fotos
-      .map((url) => {
-        const parts = url.split("/productos/");
-        return parts.length > 1 ? parts[1] : null;
-      })
-      .filter((p): p is string => Boolean(p));
+    const prodAEliminar = productos.find((p) => p.id === id);
+    if (prodAEliminar && prodAEliminar.fotos && prodAEliminar.fotos.length > 0) {
+      const pathsParaBorrar = prodAEliminar.fotos
+        .map((url) => {
+          const parts = url.split("/productos/");
+          return parts.length > 1 ? parts[1] : null;
+        })
+        .filter((p): p is string => Boolean(p));
 
-    if (pathsParaBorrar.length > 0) {
-      await supabase.storage.from("productos").remove(pathsParaBorrar);
+      if (pathsParaBorrar.length > 0) {
+        await supabase.storage.from("productos").remove(pathsParaBorrar);
+      }
     }
-  }
 
-  // 2. Borrar el registro de la base de datos
-  await supabase.from("productos").delete().eq("id", id);
-  cargarDatos();
-};
+    await supabase.from("productos").delete().eq("id", id);
+    cargarDatos();
+  };
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
@@ -348,7 +416,7 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-neutral-500 mb-1">Cantidad / Stock *</label>
+                <label className="block text-[11px] font-bold text-neutral-500 mb-1">Stock *</label>
                 <input
                   type="number"
                   min="1"
@@ -439,16 +507,16 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* Subida de Fotos con Previsualización */}
+            {/* Subida de Fotos con Selección de Portada */}
             <div>
               <label className="block text-[11px] font-bold text-neutral-500 mb-1">
-                {editandoId ? "Reemplazar Fotos (Opcional, hasta 5)" : "Fotos (hasta 5)"}
+                {editandoId ? "Fotos (Toca una foto para hacerla Portada)" : "Fotos (Toca una foto para hacerla Portada)"}
               </label>
 
               <label className="flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 hover:border-cyan-500 rounded-xl p-3 cursor-pointer bg-neutral-50 transition-colors">
                 <Upload className="w-5 h-5 text-neutral-400 mb-1" />
                 <span className="text-xs text-neutral-600 font-medium">Toca para tomar fotos o elegirlas</span>
-                <span className="text-[10px] text-neutral-400">Hasta 5 fotos</span>
+                <span className="text-[10px] text-neutral-400">Hasta 5 fotos (se optimizan automáticamente)</span>
                 <input
                   type="file"
                   multiple
@@ -461,7 +529,7 @@ export default function AdminDashboard() {
               {previews.length > 0 && (
                 <div className="mt-2.5 space-y-1.5">
                   <div className="flex justify-between items-center text-[11px] text-teal-800 font-medium px-0.5">
-                    <span>{previews.length} foto(s) lista(s)</span>
+                    <span>{previews.length} foto(s) • La primera es la portada</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -475,22 +543,44 @@ export default function AdminDashboard() {
                   </div>
                   <div className="grid grid-cols-5 gap-2">
                     {previews.map((src, index) => (
-                      <div key={index} className="relative aspect-square rounded-lg overflow-hidden border border-neutral-300 bg-neutral-100 shadow-2xs group">
+                      <div 
+                        key={index} 
+                        onClick={() => definirComoPortada(index)}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 cursor-pointer transition-all shadow-2xs group ${
+                          index === 0 ? "border-cyan-600 ring-2 ring-cyan-500/20" : "border-neutral-300 hover:border-neutral-400"
+                        }`}
+                        title="Toca para definir como portada"
+                      >
                         <img
                           src={src}
                           alt={`Previsualización ${index + 1}`}
                           className="w-full h-full object-cover"
                         />
+
+                        {/* Indicador de Portada */}
+                        {index === 0 ? (
+                          <span className="absolute top-1 left-1 bg-cyan-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xs">
+                            <Star className="w-2.5 h-2.5 fill-current" /> Portada
+                          </span>
+                        ) : (
+                          <span className="absolute top-1 left-1 bg-black/60 text-white text-[8px] font-medium px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                            Hacer portada
+                          </span>
+                        )}
+
                         <button
                           type="button"
-                          onClick={() => eliminarFotoSeleccionada(index)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            eliminarFotoSeleccionada(index);
+                          }}
                           className="absolute top-1 right-1 bg-black/70 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors"
                           title="Quitar foto"
                         >
                           <X className="w-3 h-3" />
                         </button>
-                        <span className="absolute bottom-0.5 left-1 text-[9px] font-black text-white bg-black/60 px-1 rounded">
-                          {index + 1}
+                        <span className="absolute bottom-0.5 right-1 text-[9px] font-black text-white bg-black/60 px-1 rounded">
+                          #{index + 1}
                         </span>
                       </div>
                     ))}
@@ -504,7 +594,7 @@ export default function AdminDashboard() {
               disabled={subiendo}
               className="w-full py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold rounded-xl transition-all text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm"
             >
-              {subiendo ? "Guardando..." : editandoId ? "Actualizar Producto" : "Publicar en el Bazar"}
+              {subiendo ? (estadoSubida || "Guardando...") : editandoId ? "Actualizar Producto" : "Publicar en el Bazar"}
             </button>
           </form>
         </div>
