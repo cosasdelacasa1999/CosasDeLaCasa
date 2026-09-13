@@ -1,69 +1,609 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { Producto, Categoria, ItemCarrito } from "@/lib/types";
+import { 
+  ShoppingCart, 
+  Search, 
+  Trash2, 
+  X, 
+  MessageCircle, 
+  CheckCircle2, 
+  ChevronLeft, 
+  ChevronRight,
+  Truck,
+  Sparkles,
+  Plus,
+  Minus
+} from "lucide-react";
 import Image from "next/image";
 
-export default function Home() {
+export default function CatalogoPage() {
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<string>("todas");
+  const [busqueda, setBusqueda] = useState<string>("");
+  const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
+  const [carritoAbierto, setCarritoAbierto] = useState(false);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
+  const [modalFotoIndex, setModalFotoIndex] = useState<number>(0);
+  const [cantidadModal, setCantidadModal] = useState<number>(1);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  async function cargarDatos() {
+    setLoading(true);
+    const { data: cats } = await supabase.from("categorias").select("*").order("nombre");
+    const { data: prods } = await supabase
+      .from("productos")
+      .select("*, categorias(*)")
+      .order("created_at", { ascending: false });
+
+    if (cats) setCategorias(cats);
+    if (prods) setProductos(prods as Producto[]);
+    setLoading(false);
+  }
+
+  const agregarAlCarrito = (producto: Producto, cant: number = 1, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (producto.estado === "vendido" || (producto.cantidad ?? 1) <= 0) return;
+
+    setCarrito((prev) => {
+      const index = prev.findIndex((item) => item.producto.id === producto.id);
+      const stockMax = producto.cantidad ?? 1;
+
+      if (index > -1) {
+        const nuevaCant = Math.min(prev[index].cantidadPedida + cant, stockMax);
+        const nuevo = [...prev];
+        nuevo[index] = { ...nuevo[index], cantidadPedida: nuevaCant };
+        return nuevo;
+      } else {
+        return [...prev, { producto, cantidadPedida: Math.min(cant, stockMax) }];
+      }
+    });
+  };
+
+  const modificarCantidadCarrito = (id: string, delta: number) => {
+    setCarrito((prev) =>
+      prev
+        .map((item) => {
+          if (item.producto.id === id) {
+            const stockMax = item.producto.cantidad ?? 1;
+            const nueva = item.cantidadPedida + delta;
+            return nueva > 0 && nueva <= stockMax ? { ...item, cantidadPedida: nueva } : item;
+          }
+          return item;
+        })
+        .filter((item) => item.cantidadPedida > 0)
+    );
+  };
+
+  const quitarDelCarrito = (id: string) => {
+    setCarrito(carrito.filter((item) => item.producto.id !== id));
+  };
+
+  const totalCarrito = carrito.reduce(
+    (acc, item) => acc + Number(item.producto.precio) * item.cantidadPedida,
+    0
+  );
+  const totalArticulos = carrito.reduce((acc, item) => acc + item.cantidadPedida, 0);
+
+  const enviarWhatsApp = () => {
+    const telefono = process.env.NEXT_PUBLIC_WHATSAPP_PHONE || "584120000000";
+    
+    let texto = "*¡Hola! Estuve viendo el catálogo de El Bazar Cubides y me interesan estos artículos:*\n\n";
+    
+    carrito.forEach((item, index) => {
+      const subtotal = Number(item.producto.precio) * item.cantidadPedida;
+      texto += `${index + 1}. *${item.producto.titulo}* ${item.producto.marca ? `(${item.producto.marca})` : ""} - Cant: ${item.cantidadPedida} x $${Number(item.producto.precio).toFixed(2)} = *$${subtotal.toFixed(2)}*\n`;
+    });
+
+    texto += `\n*Total estimado:* $${totalCarrito.toFixed(2)}`;
+    
+    if (totalCarrito >= 25) {
+      texto += "\n*(Aplica para Delivery Gratis)*";
+    }
+    
+    texto += "\n\n¿Siguen disponibles?";
+
+    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(texto)}`;
+    window.open(url, "_blank");
+  };
+
+  const productosFiltrados = productos.filter((prod) => {
+    const coincideCat = categoriaSeleccionada === "todas" || prod.categoria_id === categoriaSeleccionada;
+    const q = busqueda.toLowerCase();
+    const coincideBusqueda = 
+      prod.titulo.toLowerCase().includes(q) || 
+      (prod.marca && prod.marca.toLowerCase().includes(q)) ||
+      (prod.descripcion && prod.descripcion.toLowerCase().includes(q));
+    return coincideCat && coincideBusqueda;
+  });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#fafaf9] text-neutral-800 selection:bg-cyan-500 selection:text-white pb-20 relative">
+      {/* Patrón de fondo */}
+      <div 
+        className="fixed inset-0 pointer-events-none opacity-[0.035] z-0"
+        style={{
+          backgroundImage: `radial-gradient(#0891b2 1px, transparent 1px)`,
+          backgroundSize: '16px 16px'
+        }}
+      />
+
+      {/* Banner Promocional */}
+      <div className="bg-gradient-to-r from-teal-600 via-cyan-600 to-teal-500 text-white text-xs font-semibold py-1.5 px-3 shadow-sm relative z-40">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-1.5 mx-auto sm:mx-0 text-center text-[11px] sm:text-xs">
+            <Truck className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
+            <span><strong>Delivery Gratis</strong> en compras mayores a <strong>$25</strong></span>
+          </div>
+          <span className="hidden sm:inline-block text-[11px] text-teal-100 bg-teal-800/40 px-2 py-0.5 rounded-full">
+            Caracas • Garage Sale
+          </span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </div>
+
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 shadow-xs">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 flex items-center gap-3">
+          {/* Logo y Nombre */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative w-9 h-9 shrink-0 flex items-center justify-center">
+              <Image 
+                src="/logo.png" 
+                alt="El Bazar Cubides Logo" 
+                fill 
+                sizes="36px"
+                className="object-contain" 
+              />
+            </div>
+            <div className="leading-tight hidden min-[360px]:block">
+              <h1 className="text-sm sm:text-base font-black tracking-tight text-neutral-900">
+                El Bazar Cubides
+              </h1>
+              <p className="text-[10px] text-cyan-700 font-medium">Tesoros & Garage</p>
+            </div>
+          </div>
+
+          {/* Barra de Búsqueda */}
+<div className="flex-1 relative flex items-center">
+  <Search className="w-4 h-4 absolute left-3 text-neutral-400 pointer-events-none" />
+  <input
+    type="text"
+    placeholder="Buscar productos, marcas..."
+    value={busqueda}
+    onChange={(e) => setBusqueda(e.target.value)}
+    className="w-full pl-9 pr-3 py-2 bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-cyan-500 rounded-full text-xs outline-none transition-all leading-normal"
+  />
+</div>
+
+          {/* Botón Carrito */}
+          <button
+            onClick={() => setCarritoAbierto(true)}
+            className="relative p-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-full transition-all shrink-0 shadow-sm shadow-cyan-600/30"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <ShoppingCart className="w-4 h-4" />
+            {totalArticulos > 0 && (
+              <span className="absolute -top-1 -right-1 bg-yellow-400 text-neutral-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                {totalArticulos}
+              </span>
+            )}
+          </button>
         </div>
+
+        {/* Categorías */}
+        <div className="max-w-6xl mx-auto px-3 pb-2 pt-1">
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-[11px]">
+            <button
+              onClick={() => setCategoriaSeleccionada("todas")}
+              className={`px-3 py-1 rounded-full whitespace-nowrap font-medium transition-all ${
+                categoriaSeleccionada === "todas"
+                  ? "bg-cyan-600 text-white shadow-xs"
+                  : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+              }`}
+            >
+              Todos ({productos.length})
+            </button>
+            {categorias.map((cat) => {
+              const count = productos.filter((p) => p.categoria_id === cat.id).length;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoriaSeleccionada(cat.id)}
+                  className={`px-3 py-1 rounded-full whitespace-nowrap font-medium transition-all ${
+                    categoriaSeleccionada === cat.id
+                      ? "bg-cyan-600 text-white shadow-xs"
+                      : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+                  }`}
+                >
+                  {cat.nombre} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </header>
+
+      {/* Grid: 3 por fila en móvil */}
+      <main className="max-w-6xl mx-auto px-2 sm:px-4 pt-3 relative z-10">
+        {loading ? (
+          <div className="text-center py-20 text-neutral-400 text-xs font-medium">
+            Cargando el bazar...
+          </div>
+        ) : productosFiltrados.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-2xl border border-neutral-200/70 p-6 mx-2 mt-4 shadow-xs">
+            <Sparkles className="w-8 h-8 text-cyan-600/40 mx-auto mb-2" />
+            <p className="text-xs text-neutral-500 font-medium">No hay productos que coincidan con tu búsqueda.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3.5">
+            {productosFiltrados.map((prod) => {
+              const stock = prod.cantidad ?? 1;
+              const esVendido = prod.estado === "vendido" || stock <= 0;
+              const enCarrito = carrito.some((item) => item.producto.id === prod.id);
+              const fotos = prod.fotos && prod.fotos.length > 0 ? prod.fotos : ["/placeholder.png"];
+
+              return (
+                <div
+                  key={prod.id}
+                  onClick={() => {
+                    setProductoSeleccionado(prod);
+                    setModalFotoIndex(0);
+                    setCantidadModal(1);
+                  }}
+                  className={`group bg-white rounded-xl border overflow-hidden flex flex-col justify-between cursor-pointer transition-all duration-150 shadow-2xs hover:shadow-md ${
+                    esVendido ? "border-red-200/70 opacity-60 bg-red-50/10" : "border-neutral-200/80 hover:border-cyan-400"
+                  }`}
+                >
+                  {/* Contenedor Imagen */}
+                  <div className="relative aspect-square w-full bg-neutral-100 overflow-hidden">
+                    {fotos[0] !== "/placeholder.png" ? (
+                      <Image
+                        src={fotos[0]}
+                        alt={prod.titulo}
+                        fill
+                        className={`object-cover transition-transform duration-200 ${esVendido ? "grayscale" : "group-hover:scale-105"}`}
+                        sizes="(max-width: 640px) 33vw, 20vw"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[10px] text-neutral-400">Sin foto</div>
+                    )}
+
+                    {/* Badge Vendido */}
+                    {esVendido && (
+                      <div className="absolute inset-0 bg-red-600/80 backdrop-blur-[2px] flex items-center justify-center">
+                        <span className="text-white text-[9px] font-black tracking-wider uppercase bg-black/40 px-1.5 py-0.5 rounded">
+                          Vendido
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Stock disponible si hay más de 1 */}
+                    {!esVendido && stock > 1 && (
+                      <div className="absolute top-1 left-1 bg-cyan-900/80 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                        {stock} disp.
+                      </div>
+                    )}
+
+                    {/* Badge Precio */}
+                    <div className="absolute bottom-1 right-1 bg-neutral-900/85 backdrop-blur-xs text-white text-[11px] font-black px-1.5 py-0.5 rounded-md">
+                      ${Number(prod.precio).toFixed(0)}
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-1.5 sm:p-2 flex flex-col justify-between flex-1 gap-1">
+                    <div>
+                      {prod.marca && (
+                        <p className="text-[9px] text-cyan-700 font-bold uppercase tracking-wider truncate">
+                          {prod.marca}
+                        </p>
+                      )}
+                      <h3 className="font-semibold text-neutral-900 text-[11px] sm:text-xs leading-tight line-clamp-2">
+                        {prod.titulo}
+                      </h3>
+                    </div>
+
+                    <button
+                      disabled={esVendido}
+                      onClick={(e) => agregarAlCarrito(prod, 1, e)}
+                      className={`w-full py-1 px-1 rounded-md text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                        esVendido
+                          ? "bg-neutral-100 text-neutral-400 cursor-not-allowed"
+                          : enCarrito
+                          ? "bg-teal-50 text-teal-700 border border-teal-200"
+                          : "bg-cyan-50 hover:bg-cyan-600 text-cyan-800 hover:text-white border border-cyan-200"
+                      }`}
+                    >
+                      {esVendido ? "Agotado" : enCarrito ? <CheckCircle2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                      <span className="hidden min-[400px]:inline">
+                        {esVendido ? "" : enCarrito ? "Listo" : "Llevar"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </main>
+
+      {/* Modal de Detalle */}
+      {productoSeleccionado && (
+        <div 
+          onClick={() => setProductoSeleccionado(null)}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200 animate-in slide-in-from-bottom duration-200"
+          >
+            {/* Cabecera modal */}
+            <div className="p-3 border-b border-neutral-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-xs z-10">
+              <span className="text-xs font-bold text-cyan-700 uppercase tracking-wider">
+                {productoSeleccionado.categorias?.nombre || "Detalle"}
+              </span>
+              <button 
+                onClick={() => setProductoSeleccionado(null)}
+                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Galería grande */}
+            <div className="relative aspect-4/3 w-full bg-neutral-900 overflow-hidden">
+              {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 0 ? (
+                <Image
+                  src={productoSeleccionado.fotos[modalFotoIndex] || productoSeleccionado.fotos[0]}
+                  alt={productoSeleccionado.titulo}
+                  fill
+                  className="object-contain"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">Sin fotos</div>
+              )}
+
+              {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setModalFotoIndex((prev) => (prev - 1 + productoSeleccionado.fotos.length) % productoSeleccionado.fotos.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 bg-black/50 hover:bg-black/70 rounded-full text-white"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setModalFotoIndex((prev) => (prev + 1) % productoSeleccionado.fotos.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-black/50 hover:bg-black/70 rounded-full text-white"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                  <div className="absolute bottom-2 inset-x-0 flex justify-center gap-1.5">
+                    {productoSeleccionado.fotos.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setModalFotoIndex(i)}
+                        className={`w-2 h-2 rounded-full transition-all ${i === modalFotoIndex ? "bg-cyan-400 w-4" : "bg-white/50"}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Información completa */}
+            <div className="p-5 space-y-4">
+              <div>
+                <div className="flex justify-between items-start gap-2 mb-1">
+                  <h2 className="text-lg font-black text-neutral-900 leading-tight">
+                    {productoSeleccionado.titulo}
+                  </h2>
+                  <span className="text-2xl font-black text-teal-700 shrink-0">
+                    ${Number(productoSeleccionado.precio).toFixed(2)}
+                  </span>
+                </div>
+                {productoSeleccionado.marca && (
+                  <p className="text-xs text-neutral-500 font-medium">Marca: <strong className="text-neutral-800">{productoSeleccionado.marca}</strong></p>
+                )}
+              </div>
+
+              {/* Cápsulas de Estado, Stock y Funcionalidad */}
+              <div className="flex flex-wrap gap-2 pt-1 border-t border-neutral-100">
+                <span className="text-[11px] px-2.5 py-1 bg-cyan-100/70 text-cyan-900 font-bold rounded-lg">
+                  Disponibles: {productoSeleccionado.cantidad ?? 1} unid.
+                </span>
+                {productoSeleccionado.condicion && (
+                  <span className="text-[11px] px-2.5 py-1 bg-neutral-100 text-neutral-700 font-semibold rounded-lg">
+                    Estado: <span className="text-cyan-800">{productoSeleccionado.condicion}</span>
+                  </span>
+                )}
+                {productoSeleccionado.funcionalidad && (
+                  <span className="text-[11px] px-2.5 py-1 bg-cyan-50 text-cyan-800 font-semibold rounded-lg border border-cyan-200/50">
+                    Funcionalidad: {productoSeleccionado.funcionalidad}
+                  </span>
+                )}
+                {(productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0) && (
+                  <span className="text-[11px] px-2.5 py-1 bg-red-100 text-red-700 font-black rounded-lg">
+                    Vendido
+                  </span>
+                )}
+              </div>
+
+              {/* Selector de Cantidad en Modal */}
+              {productoSeleccionado.estado !== 'vendido' && (productoSeleccionado.cantidad ?? 1) > 1 && (
+                <div className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200/80 rounded-xl">
+                  <span className="text-xs font-bold text-neutral-700">Cantidad a comprar:</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCantidadModal(Math.max(1, cantidadModal - 1))}
+                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-sm font-black text-neutral-900 min-w-5 text-center">
+                      {cantidadModal}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCantidadModal(Math.min(productoSeleccionado.cantidad ?? 1, cantidadModal + 1))}
+                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Descripción */}
+              {productoSeleccionado.descripcion && (
+                <div className="pt-2 border-t border-neutral-100">
+                  <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Detalles & Observaciones</h4>
+                  <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed whitespace-pre-line bg-neutral-50 p-3 rounded-xl border border-neutral-100">
+                    {productoSeleccionado.descripcion}
+                  </p>
+                </div>
+              )}
+
+              {/* Botón de acción */}
+              <button
+                disabled={productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0}
+                onClick={() => {
+                  agregarAlCarrito(productoSeleccionado, cantidadModal);
+                  setProductoSeleccionado(null);
+                  setCarritoAbierto(true);
+                }}
+                className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
+                  productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0
+                    ? "bg-neutral-200 text-neutral-400 cursor-not-allowed"
+                    : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/30"
+                }`}
+              >
+                {productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0 ? (
+                  "Artículo Vendido"
+                ) : (
+                  <>
+                    <ShoppingCart className="w-4 h-4" /> Agregar al Carrito ({cantidadModal})
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drawer del Carrito */}
+      {carritoAbierto && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
+          <div className="w-full max-w-md bg-white h-full flex flex-col p-5 shadow-2xl animate-in slide-in-from-right duration-150">
+            <div className="flex justify-between items-center pb-3 border-b border-neutral-200">
+              <h2 className="text-base font-bold flex items-center gap-2 text-neutral-900">
+                <ShoppingCart className="w-5 h-5 text-cyan-600" />
+                Tu Carrito ({totalArticulos})
+              </h2>
+              <button
+                onClick={() => setCarritoAbierto(false)}
+                className="p-1.5 hover:bg-neutral-100 rounded-full text-neutral-400 hover:text-neutral-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {carrito.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-neutral-400 text-xs">
+                <ShoppingCart className="w-10 h-10 mb-2 opacity-30 stroke-[1.5]" />
+                El carrito está vacío
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto py-3 space-y-2.5">
+                {carrito.map((item) => {
+                  const stockMax = item.producto.cantidad ?? 1;
+                  return (
+                    <div
+                      key={item.producto.id}
+                      className="p-3 bg-neutral-50 border border-neutral-200/80 rounded-xl space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-xs text-neutral-800 truncate">{item.producto.titulo}</h4>
+                          <p className="text-xs text-cyan-700 font-bold">
+                            ${(Number(item.producto.precio) * item.cantidadPedida).toFixed(2)}
+                            <span className="text-[10px] text-neutral-400 font-normal ml-1">
+                              (${Number(item.producto.precio).toFixed(2)} c/u)
+                            </span>
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => quitarDelCarrito(item.producto.id)}
+                          className="text-neutral-400 hover:text-red-500 p-1 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Controles de cantidad en Carrito */}
+                      <div className="flex items-center justify-between pt-1 border-t border-neutral-200/60 text-xs">
+                        <span className="text-[11px] text-neutral-500">Unidades:</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => modificarCantidadCarrito(item.producto.id, -1)}
+                            className="p-1 rounded bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="font-bold text-neutral-800 min-w-4 text-center">
+                            {item.cantidadPedida}
+                          </span>
+                          <button
+                            disabled={item.cantidadPedida >= stockMax}
+                            onClick={() => modificarCantidadCarrito(item.producto.id, 1)}
+                            className={`p-1 rounded bg-white border border-neutral-200 transition-colors ${
+                              item.cantidadPedida >= stockMax
+                                ? "text-neutral-300 border-neutral-100 cursor-not-allowed"
+                                : "text-neutral-600 hover:bg-neutral-100"
+                            }`}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {carrito.length > 0 && (
+              <div className="pt-3 border-t border-neutral-200 space-y-3">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs text-neutral-500 font-medium">Total Estimado</span>
+                  <span className="text-xl font-black text-teal-700">${totalCarrito.toFixed(2)}</span>
+                </div>
+
+                {totalCarrito >= 25 && (
+                  <div className="text-[11px] bg-teal-50 border border-teal-200 text-teal-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium">
+                    <Truck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                    ¡Genial! Calificas para <strong>Delivery Gratis</strong>.
+                  </div>
+                )}
+
+                <button
+                  onClick={enviarWhatsApp}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 text-xs sm:text-sm"
+                >
+                  <MessageCircle className="w-4 h-4 fill-current" />
+                  Pedir por WhatsApp
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
