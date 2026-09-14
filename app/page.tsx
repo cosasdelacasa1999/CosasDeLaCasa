@@ -417,7 +417,7 @@ export default function CatalogoPage() {
               <p className="text-xs text-neutral-500 font-medium">No hay productos que coincidan con estos filtros.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-3.5">
               {productosFiltrados.map((prod) => {
                 const stock = prod.cantidad ?? 1;
                 const esVendido = prod.estado === "vendido" || stock <= 0;
@@ -486,9 +486,9 @@ export default function CatalogoPage() {
 
                         {/* Bloque de Precio */}
                         <div className="pt-0.5">
-                          <div className="text-xs sm:text-sm font-black text-neutral-900 leading-none">
-                            ${Number(prod.precio).toFixed(0)}
-                          </div>
+                          <div className="text-xs sm:text-sm font-semibold text-[#0092B8] leading-none">
+  ${Number(prod.precio).toFixed(2)}
+</div>
                           {tasaBcv && (
                             <div className="text-[9px] text-teal-700 font-semibold tracking-tight mt-0.5">
                               Bs. {formatoBs(Number(prod.precio))}
@@ -537,7 +537,7 @@ export default function CatalogoPage() {
         </Link>
       </footer>
 
-      {/* Modal de Detalle */}
+      {/* Modal de Detalle Organizado */}
       {productoSeleccionado && (
         <div 
           onClick={cerrarModalProducto}
@@ -545,135 +545,142 @@ export default function CatalogoPage() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200 animate-in slide-in-from-bottom duration-200"
+            className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200/80 animate-in slide-in-from-bottom duration-200"
           >
-            {/* Cabecera modal con botón Compartir y Cerrar */}
-            <div className="p-3 border-b border-neutral-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-xs z-10">
-              <span className="text-xs font-bold text-cyan-700 uppercase tracking-wider">
-                {productoSeleccionado.categorias?.nombre || "Detalle"}
+            {/* Cabecera superior compacta */}
+            <div className="px-4 py-3 border-b border-neutral-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-xs z-10">
+              <span className="text-[11px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200/50">
+                {productoSeleccionado.categorias?.nombre || "Artículo"}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => compartirProducto(productoSeleccionado)}
-                  className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-600 flex items-center gap-1 text-xs font-medium"
+                  className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-neutral-800 transition-colors"
                   title="Compartir"
                 >
-                  <Share2 className="w-4 h-4 text-cyan-700" />
-                  <span className="hidden sm:inline">Compartir</span>
+                  <Share2 className="w-4 h-4" />
                 </button>
                 <button 
                   onClick={cerrarModalProducto}
-                  className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500"
+                  className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 transition-colors"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Galería grande */}
-            <div className="relative aspect-4/3 w-full bg-neutral-900 overflow-hidden">
+            {/* Galería limpia */}
+            <div className="relative aspect-4/3 w-full bg-neutral-100 overflow-hidden">
               {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 0 ? (
                 <Image
                   src={productoSeleccionado.fotos[modalFotoIndex] || productoSeleccionado.fotos[0]}
                   alt={productoSeleccionado.titulo}
                   fill
-                  className="object-contain"
+                  className="object-contain p-2"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">Sin fotos</div>
+                <div className="w-full h-full flex items-center justify-center text-neutral-400 text-xs">Sin fotos</div>
               )}
 
               {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 1 && (
                 <>
                   <button
                     onClick={() => setModalFotoIndex((prev) => (prev - 1 + productoSeleccionado.fotos.length) % productoSeleccionado.fotos.length)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 bg-black/50 hover:bg-black/70 rounded-full text-white"
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-xs transition-colors"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setModalFotoIndex((prev) => (prev + 1) % productoSeleccionado.fotos.length)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-black/50 hover:bg-black/70 rounded-full text-white"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-xs transition-colors"
                   >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-4 h-4" />
                   </button>
-                  <div className="absolute bottom-2 inset-x-0 flex justify-center gap-1.5">
-                    {productoSeleccionado.fotos.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setModalFotoIndex(i)}
-                        className={`w-2 h-2 rounded-full transition-all ${i === modalFotoIndex ? "bg-cyan-400 w-4" : "bg-white/50"}`}
-                      />
-                    ))}
+                  
+                  {/* Paginador minimalista */}
+                  <div className="absolute bottom-2.5 right-3 bg-neutral-900/60 backdrop-blur-xs text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
+                    {modalFotoIndex + 1} / {productoSeleccionado.fotos.length}
                   </div>
                 </>
               )}
             </div>
 
-            {/* Información en Modal */}
-            <div className="p-5 space-y-4">
-              <div>
-                <div className="flex justify-between items-start gap-2 mb-1">
-                  <h2 className="text-lg font-black text-neutral-900 leading-tight">
+            {/* Contenido */}
+            <div className="p-4 sm:p-5 space-y-4">
+              {/* Título, Marca y Precios */}
+              <div className="space-y-1">
+                {productoSeleccionado.marca && (
+                  <p className="text-[10px] font-bold text-cyan-700 uppercase tracking-wider">
+                    {productoSeleccionado.marca}
+                  </p>
+                )}
+                <div className="flex justify-between items-start gap-3">
+                  <h2 className="text-base sm:text-lg font-bold text-neutral-900 leading-snug">
                     {productoSeleccionado.titulo}
                   </h2>
                   <div className="text-right shrink-0">
-                    <div className="text-2xl font-black text-teal-700 leading-none">
+                    <div className="text-xl sm:text-2xl font-semibold text-[#0092B8] leading-none">
                       ${Number(productoSeleccionado.precio).toFixed(2)}
                     </div>
                     {tasaBcv && (
-                      <div className="text-xs text-neutral-500 font-bold mt-1">
-                        ≈ Bs. {formatoBs(Number(productoSeleccionado.precio))}
+                      <div className="text-[11px] font-bold text-teal-700 mt-1">
+                        Bs. {formatoBs(Number(productoSeleccionado.precio))}
                       </div>
                     )}
                   </div>
                 </div>
-                {productoSeleccionado.marca && (
-                  <p className="text-xs text-neutral-500 font-medium">Marca: <strong className="text-neutral-800">{productoSeleccionado.marca}</strong></p>
-                )}
               </div>
 
-              {/* Cápsulas de Estado, Stock y Funcionalidad */}
-              <div className="flex flex-wrap gap-2 pt-1 border-t border-neutral-100">
-                <span className="text-[11px] px-2.5 py-1 bg-cyan-100/70 text-cyan-900 font-bold rounded-lg">
-                  Disponibles: {productoSeleccionado.cantidad ?? 1} unid.
+              {/* Ficha técnica en pills ordenadas */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-neutral-100 text-[11px]">
+                <span className="px-2.5 py-1 bg-neutral-100 text-neutral-700 rounded-lg font-medium">
+                  {productoSeleccionado.cantidad ?? 1} disp.
                 </span>
                 {productoSeleccionado.condicion && (
-                  <span className="text-[11px] px-2.5 py-1 bg-neutral-100 text-neutral-700 font-semibold rounded-lg">
-                    Estado: <span className="text-cyan-800">{productoSeleccionado.condicion}</span>
+                  <span className="px-2.5 py-1 bg-neutral-100 text-neutral-700 rounded-lg font-medium">
+                    {productoSeleccionado.condicion}
                   </span>
                 )}
                 {productoSeleccionado.funcionalidad && (
-                  <span className="text-[11px] px-2.5 py-1 bg-cyan-50 text-cyan-800 font-semibold rounded-lg border border-cyan-200/50">
-                    Funcionalidad: {productoSeleccionado.funcionalidad}
+                  <span className="px-2.5 py-1 bg-neutral-100 text-neutral-700 rounded-lg font-medium">
+                    {productoSeleccionado.funcionalidad}
                   </span>
                 )}
                 {(productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0) && (
-                  <span className="text-[11px] px-2.5 py-1 bg-red-100 text-red-700 font-black rounded-lg">
-                    Vendido
+                  <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded-lg font-bold">
+                    Agotado
                   </span>
                 )}
               </div>
 
-              {/* Selector de Cantidad */}
+              {/* Descripción limpia y natural */}
+              {productoSeleccionado.descripcion && (
+                <div className="pt-2 border-t border-neutral-100">
+                  <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed whitespace-pre-line font-normal">
+                    {productoSeleccionado.descripcion}
+                  </p>
+                </div>
+              )}
+
+              {/* Selector de Cantidad si hay varias piezas */}
               {productoSeleccionado.estado !== 'vendido' && (productoSeleccionado.cantidad ?? 1) > 1 && (
-                <div className="flex items-center justify-between p-3 bg-neutral-50 border border-neutral-200/80 rounded-xl">
-                  <span className="text-xs font-bold text-neutral-700">Cantidad a comprar:</span>
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between p-2.5 bg-neutral-50 rounded-xl border border-neutral-200/60">
+                  <span className="text-xs font-semibold text-neutral-700">Cantidad:</span>
+                  <div className="flex items-center gap-2.5">
                     <button
                       type="button"
                       onClick={() => setCantidadModal(Math.max(1, cantidadModal - 1))}
-                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
+                      className="p-1 rounded-md bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-sm font-black text-neutral-900 min-w-5 text-center">
+                    <span className="text-xs font-bold text-neutral-900 min-w-4 text-center">
                       {cantidadModal}
                     </span>
                     <button
                       type="button"
                       onClick={() => setCantidadModal(Math.min(productoSeleccionado.cantidad ?? 1, cantidadModal + 1))}
-                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
+                      className="p-1 rounded-md bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
@@ -681,17 +688,7 @@ export default function CatalogoPage() {
                 </div>
               )}
 
-              {/* Descripción */}
-              {productoSeleccionado.descripcion && (
-                <div className="pt-2 border-t border-neutral-100">
-                  <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Detalles & Observaciones</h4>
-                  <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed whitespace-pre-line bg-neutral-50 p-3 rounded-xl border border-neutral-100">
-                    {productoSeleccionado.descripcion}
-                  </p>
-                </div>
-              )}
-
-              {/* Botón agregar */}
+              {/* Botón de acción */}
               <button
                 disabled={productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0}
                 onClick={() => {
@@ -699,14 +696,14 @@ export default function CatalogoPage() {
                   cerrarModalProducto();
                   abrirCarrito();
                 }}
-                className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
+                className={`w-full py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs ${
                   productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0
-                    ? "bg-neutral-200 text-neutral-400 cursor-not-allowed"
-                    : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/30"
+                    ? "bg-neutral-100 text-neutral-400 cursor-not-allowed border border-neutral-200"
+                    : "bg-cyan-600 hover:bg-cyan-700 text-white shadow-cyan-600/20"
                 }`}
               >
                 {productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0 ? (
-                  "Artículo Vendido"
+                  "Artículo no disponible"
                 ) : (
                   <>
                     <ShoppingCart className="w-4 h-4" /> Agregar al Carrito ({cantidadModal})
