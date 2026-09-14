@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Producto, Categoria } from "@/lib/types";
 import { useRouter } from "next/navigation";
@@ -18,7 +18,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Tag,
-  Check
+  Check,
+  Search,
+  Share2,
+  Download
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -77,6 +80,7 @@ export default function AdminDashboard() {
   const [authChecked, setAuthChecked] = useState(false);
   const [productos, setProductos] = useState<any[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [busquedaAdmin, setBusquedaAdmin] = useState("");
   const router = useRouter();
 
   // Modo Edición Producto
@@ -99,6 +103,10 @@ export default function AdminDashboard() {
 
   // Modal personalizado
   const [modalInfo, setModalInfo] = useState<{ title: string; desc: string; type: 'success' | 'error' } | null>(null);
+
+  // Generador de Historias
+  const [generandoHistoria, setGenerandoHistoria] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Gestión de Categorías
   const [nuevaCat, setNuevaCat] = useState("");
@@ -365,8 +373,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const toggleEstado = async (id: string, estadoActual: string) => {
-    const nuevoEstado = estadoActual === "disponible" ? "vendido" : "disponible";
+  // Ciclo de estados: Disponible -> Reservado -> Vendido -> Disponible
+  const rotarEstado = async (id: string, estadoActual: string) => {
+    let nuevoEstado = "reservado";
+    if (estadoActual === "reservado") nuevoEstado = "vendido";
+    else if (estadoActual === "vendido") nuevoEstado = "disponible";
+
     await supabase.from("productos").update({ estado: nuevoEstado }).eq("id", id);
     cargarDatos();
   };
@@ -392,10 +404,87 @@ export default function AdminDashboard() {
     cargarDatos();
   };
 
+  // Generador de historias para Instagram / WhatsApp (Canvas 1080x1080)
+  const generarHistoria = async (prod: any) => {
+    setGenerandoHistoria(true);
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1080;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Fondo degradado nórdico
+    const grad = ctx.createLinearGradient(0, 0, 0, 1080);
+    grad.addColorStop(0, "#e8f7fa");
+    grad.addColorStop(0.5, "#f4fafb");
+    grad.addColorStop(1, "#ffffff");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1080, 1080);
+
+    // Cabecera de marca
+    ctx.fillStyle = "#0092B8";
+    ctx.font = "bold 34px sans-serif";
+    ctx.fillText("EL BAZAR CUBIDES", 60, 90);
+
+    ctx.fillStyle = "#64748b";
+    ctx.font = "24px sans-serif";
+    ctx.fillText("VENTA DE GARAJE ONLINE", 60, 130);
+
+    // Tarjeta blanca central
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowColor = "rgba(0,0,0,0.08)";
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetY = 15;
+    ctx.beginPath();
+    ctx.roundRect(60, 170, 960, 680, 36);
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+
+    // Cargar imagen de portada
+    const imgUrl = prod.fotos?.[0] || "/placeholder.png";
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.src = imgUrl;
+
+    await new Promise((resolve) => {
+      img.onload = () => {
+        ctx.drawImage(img, 100, 210, 880, 600);
+        resolve(true);
+      };
+      img.onerror = () => resolve(false);
+    });
+
+    // Barra inferior informativa
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 44px sans-serif";
+    ctx.fillText(prod.titulo.slice(0, 36), 60, 930);
+
+    ctx.fillStyle = "#0092B8";
+    ctx.font = "900 64px sans-serif";
+    ctx.fillText(`$${Number(prod.precio).toFixed(2)}`, 60, 1010);
+
+    ctx.fillStyle = "#059669";
+    ctx.font = "bold 28px sans-serif";
+    ctx.fillText("Envío disponible en Caracas", 640, 1010);
+
+    // Descargar PNG
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.download = `bazar-${prod.titulo.replace(/\s+/g, "-").toLowerCase()}.png`;
+    link.href = dataUrl;
+    link.click();
+    setGenerandoHistoria(false);
+  };
+
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
     router.push("/admin/login");
   };
+
+  const productosFiltradosAdmin = productos.filter((p) => {
+    const q = busquedaAdmin.toLowerCase();
+    return p.titulo.toLowerCase().includes(q) || (p.marca && p.marca.toLowerCase().includes(q));
+  });
 
   if (!authChecked) {
     return <div className="min-h-screen bg-neutral-900 text-white flex items-center justify-center text-xs">Cargando administrador...</div>;
@@ -403,7 +492,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#f5f5f4] text-neutral-800 font-sans pb-28 relative">
-      {/* Barra Superior */}
       <header className="sticky top-0 z-30 bg-teal-800 text-white px-4 py-3 shadow-sm">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -591,7 +679,7 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* Subida de Fotos con Selección de Portada */}
+            {/* Subida de Fotos con Portada */}
             <div>
               <label className="block text-[11px] font-bold text-neutral-500 mb-1">
                 Fotos (Toca una foto para definir Portada)
@@ -682,14 +770,36 @@ export default function AdminDashboard() {
           </form>
         </div>
 
-        {/* 2. INVENTARIO */}
-        <div className="space-y-2 pt-2">
-          <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
-            Inventario ({productos.length})
-          </h2>
+        {/* 2. INVENTARIO CON BUSCADOR Y GENERADOR DE HISTORIAS */}
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+              Inventario ({productosFiltradosAdmin.length})
+            </h2>
+
+            {/* Buscador de inventario */}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Buscar en inventario..."
+                value={busquedaAdmin}
+                onChange={(e) => setBusquedaAdmin(e.target.value)}
+                className="w-full pl-8 pr-7 py-1.5 bg-white border border-neutral-200 rounded-xl text-xs outline-none focus:border-[#0092B8]"
+              />
+              {busquedaAdmin && (
+                <button
+                  onClick={() => setBusquedaAdmin("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="space-y-2">
-            {productos.map((item) => (
+            {productosFiltradosAdmin.map((item) => (
               <div
                 key={item.id}
                 className="p-2.5 bg-white border border-neutral-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs"
@@ -725,6 +835,16 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
+                  {/* Generador de Imagen para Stories */}
+                  <button
+                    onClick={() => generarHistoria(item)}
+                    disabled={generandoHistoria}
+                    className="p-1.5 text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                    title="Descargar imagen para historia de Instagram / WhatsApp"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+
                   <button
                     onClick={() => iniciarEdicion(item)}
                     className="p-1.5 text-neutral-500 hover:text-[#0092B8] hover:bg-cyan-50 rounded-lg transition-colors"
@@ -733,15 +853,19 @@ export default function AdminDashboard() {
                     <Edit2 className="w-4 h-4" />
                   </button>
 
+                  {/* Botón de 3 Estados: Disponible -> Reservado -> Vendido */}
                   <button
-                    onClick={() => toggleEstado(item.id, item.estado)}
+                    onClick={() => rotarEstado(item.id, item.estado)}
                     className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all ${
                       item.estado === "vendido"
                         ? "bg-red-50 text-red-600 border border-red-200"
+                        : item.estado === "reservado"
+                        ? "bg-amber-100 text-amber-800 border border-amber-300"
                         : "bg-teal-50 text-teal-700 border border-teal-200"
                     }`}
+                    title="Toca para alternar: Disp. -> Reservado -> Vendido"
                   >
-                    {item.estado === "vendido" ? "Vendido" : "Disp."}
+                    {item.estado === "vendido" ? "Vendido" : item.estado === "reservado" ? "Reservado" : "Disp."}
                   </button>
 
                   <button
@@ -756,7 +880,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 3. GESTIÓN DE CATEGORÍAS (Colocada de último) */}
+        {/* 3. GESTIÓN DE CATEGORÍAS (Al final) */}
         <div className="bg-white border border-neutral-200 p-4 rounded-2xl shadow-2xs space-y-3">
           <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
             <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -764,7 +888,6 @@ export default function AdminDashboard() {
             </h2>
           </div>
 
-          {/* Formulario para agregar */}
           <form onSubmit={handleCrearCategoria} className="flex gap-2">
             <input
               type="text"
@@ -782,7 +905,6 @@ export default function AdminDashboard() {
             </button>
           </form>
 
-          {/* Lista de Categorías con Editar y Eliminar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
             {categorias.map((cat) => (
               <div 
