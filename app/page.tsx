@@ -470,11 +470,11 @@ export default function CatalogoPage() {
 
             <div className="relative w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_3%,black_97%,transparent)]">
               <div className="animate-marquee flex gap-3 py-1">
-                {itemsMarquee.map((item, idx) => (
+                {itemsMarquee.map((item: any, idx) => (
                   <div
                     key={`${item.id}-${idx}`}
                     onClick={() => abrirModalProducto(item)}
-                    className="w-40 sm:w-48 shrink-0 bg-white rounded-2xl border border-neutral-200/80 p-2.5 shadow-2xs hover:border-[#0092B8] cursor-pointer transition-all flex items-center gap-2.5"
+                    className="w-40 sm:w-48 shrink-0 bg-white rounded-2xl border border-neutral-200/80 p-2.5 shadow-2xs hover:border-[#0092B8] cursor-pointer transition-all flex items-center gap-2.5 relative"
                   >
                     <div className="relative w-12 h-12 rounded-xl bg-neutral-100 overflow-hidden shrink-0">
                       <Image
@@ -493,6 +493,9 @@ export default function CatalogoPage() {
                         ${Number(item.precio).toFixed(2)}
                       </p>
                     </div>
+                    {item.en_oferta && (
+                      <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-amber-500 shadow-xs" title="En oferta" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -519,7 +522,7 @@ export default function CatalogoPage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3 sm:gap-4">
-              {productosFiltrados.map((prod) => {
+              {productosFiltrados.map((prod: any) => {
                 const stock = prod.cantidad ?? 1;
                 const esVendido = prod.estado === "vendido" || stock <= 0;
                 const enCarrito = carrito.some((item) => item.producto.id === prod.id);
@@ -529,8 +532,12 @@ export default function CatalogoPage() {
                   <div
                     key={prod.id}
                     onClick={() => abrirModalProducto(prod)}
-                    className={`group bg-white rounded-3xl border overflow-hidden flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-xs hover:shadow-md hover:border-[#0092B8]/50 ${
-                      esVendido ? "border-red-200/70 opacity-60 bg-red-50/10" : "border-neutral-200/80"
+                    className={`group bg-white rounded-3xl border overflow-hidden flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-xs hover:shadow-md ${
+                      esVendido 
+                        ? "border-red-200/70 opacity-60 bg-red-50/10" 
+                        : prod.en_oferta
+                        ? "border-amber-300 hover:border-amber-400"
+                        : "border-neutral-200/80 hover:border-[#0092B8]/50"
                     }`}
                   >
                     <div className="relative aspect-square w-full bg-[#f4f5f7] overflow-hidden flex items-center justify-center">
@@ -554,6 +561,14 @@ export default function CatalogoPage() {
                         <Share2 className="w-3.5 h-3.5" />
                       </button>
 
+                      {/* Badge Oferta en la foto */}
+                      {!esVendido && prod.en_oferta && (
+                        <div className="absolute bottom-2.5 left-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md shadow-sm">
+                        Oferta
+                        </div>
+                      )}
+
+                      {/* Badge Vendido */}
                       {esVendido && (
                         <div className="absolute inset-0 bg-red-600/75 backdrop-blur-xs flex items-center justify-center">
                           <span className="text-white text-[10px] font-black tracking-widest uppercase bg-black/40 px-2 py-0.5 rounded-full">
@@ -562,6 +577,7 @@ export default function CatalogoPage() {
                         </div>
                       )}
 
+                      {/* Badge Stock */}
                       {!esVendido && stock > 1 && (
                         <div className="absolute top-2.5 left-2.5 bg-neutral-900/80 backdrop-blur-xs text-white text-[9px] font-semibold px-2 py-0.5 rounded-full">
                           {stock} disp.
@@ -581,8 +597,8 @@ export default function CatalogoPage() {
                         </h3>
 
                         <div className="pt-1">
-                          <div className="text-sm sm:text-base font-semibold text-[#0092B8] leading-none">
-                            ${Number(prod.precio).toFixed(2)}
+                          <div className="text-sm sm:text-base font-semibold text-[#0092B8] leading-none flex items-center gap-1.5">
+                            <span>${Number(prod.precio).toFixed(2)}</span>
                           </div>
                           {tasaBcv && (
                             <div className="text-[10px] text-neutral-500 font-medium mt-0.5">
@@ -747,7 +763,13 @@ export default function CatalogoPage() {
                 </div>
               </div>
 
+              {/* Pills de Especificaciones + Insignia de Oferta */}
               <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                {(productoSeleccionado as any).en_oferta && (
+                  <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                    En Oferta
+                  </span>
+                )}
                 <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
                   {productoSeleccionado.cantidad ?? 1} disponible
                 </span>
