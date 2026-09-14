@@ -78,13 +78,11 @@ export default function CatalogoPage() {
   useEffect(() => {
     const cachedProds = localStorage.getItem("bazar_prods_cache");
     const cachedCats = localStorage.getItem("bazar_cats_cache");
-    const cachedBcv = localStorage.getItem("bazar_bcv_cache");
 
     if (cachedProds && cachedCats) {
       try {
         setProductos(JSON.parse(cachedProds));
         setCategorias(JSON.parse(cachedCats));
-        if (cachedBcv) setTasaBcv(Number(cachedBcv));
         setLoading(false);
       } catch (e) {
         console.error(e);
@@ -100,16 +98,41 @@ export default function CatalogoPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  async function cargarDatosFrescos() {
-  try {
-    const [catsRes, prodsRes, bcvRes] = await Promise.allSettled([
-      supabase.from("categorias").select("*").order("nombre"),
-      supabase.from("productos").select("*, categorias(*)").order("created_at", { ascending: false }),
-      fetch(`https://ve.dolarapi.com/v1/dolares/oficial?t=${Date.now()}`, {
+  async function obtenerTasaBCVFresca(): Promise<number | null> {
+    try {
+      const res = await fetch(`/api/bcv?_t=${Date.now()}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const valor = Number(data.promedio);
+        if (!isNaN(valor) && valor > 0) return valor;
+      }
+    } catch (err) {
+      console.warn("Fallo endpoint interno /api/bcv:", err);
+    }
+
+    try {
+      const resCdn = await fetch(`https://rates.dolarvzla.com/bcv/current.json?_t=${Date.now()}`, {
         cache: "no-store",
-        headers: { "Pragma": "no-cache" }
-      }).then((r) => r.json()),
-    ]);
+      });
+      if (resCdn.ok) {
+        const data = await resCdn.json();
+        const valor = Number(data?.current?.usd ?? data?.usd ?? data?.price);
+        if (!isNaN(valor) && valor > 0) return valor;
+      }
+    } catch (err) {
+      console.error("Fallo directo rates.dolarvzla.com:", err);
+    }
+
+    return null;
+  }
+
+  async function cargarDatosFrescos() {
+    try {
+      const [catsRes, prodsRes, tasaCalculada] = await Promise.allSettled([
+        supabase.from("categorias").select("*").order("nombre"),
+        supabase.from("productos").select("*, categorias(*)").order("created_at", { ascending: false }),
+        obtenerTasaBCVFresca(),
+      ]);
 
       if (catsRes.status === "fulfilled" && catsRes.value.data) {
         setCategorias(catsRes.value.data);
@@ -122,10 +145,9 @@ export default function CatalogoPage() {
         localStorage.setItem("bazar_prods_cache", JSON.stringify(prods));
       }
 
-      if (bcvRes.status === "fulfilled" && bcvRes.value?.promedio) {
-        const val = Number(bcvRes.value.promedio);
-        setTasaBcv(val);
-        localStorage.setItem("bazar_bcv_cache", String(val));
+      if (tasaCalculada.status === "fulfilled" && tasaCalculada.value) {
+        setTasaBcv(tasaCalculada.value);
+        localStorage.setItem("bazar_bcv_cache", String(tasaCalculada.value));
       }
     } catch (e) {
       console.error(e);
@@ -264,7 +286,7 @@ export default function CatalogoPage() {
   );
   const totalArticulos = carrito.reduce((acc, item) => acc + item.cantidadPedida, 0);
 
-  // Swipe handlers para el visor de imágenes
+  // Swipe táctil en fotos
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
   };
@@ -348,7 +370,7 @@ export default function CatalogoPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#e8f7fa] via-[#f4fafb] to-white text-neutral-900 selection:bg-[#0092B8] selection:text-white pb-20 relative flex flex-col justify-between font-sans">
       
-      {/* Patrón de micropuntos turquesa sutil */}
+      {/* Patrón de micropuntos */}
       <div 
         className="fixed inset-0 pointer-events-none opacity-40 z-0"
         style={{
@@ -357,7 +379,6 @@ export default function CatalogoPage() {
         }}
       />
       
-      {/* Toast de Enlace Copiado */}
       {copiadoToast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-xl animate-in fade-in duration-150">
           Enlace copiado al portapapeles
@@ -376,19 +397,18 @@ export default function CatalogoPage() {
               <span className="truncate"><strong>Delivery Gratis</strong> desde $25 (Ccs céntrico)</span>
             </button>
 
-            <div className="flex items-center gap-1 bg-black/20 backdrop-blur-xs px-2 py-0.5 rounded-full shrink-0 text-[10px] sm:text-xs">
+            <div className="flex items-center gap-1 bg-black/20 backdrop-blur-xs px-2.5 py-0.5 rounded-full shrink-0 text-[10px] sm:text-xs font-mono">
               <Coins className="w-3 h-3 text-teal-200 shrink-0" />
-              <span className="font-semibold">
-                BCV: {tasaBcv ? `Bs. ${tasaBcv.toFixed(2)}` : "..."}
+              <span className="font-bold">
+                BCV: {tasaBcv ? `Bs. ${tasaBcv.toFixed(2)}` : "Actualizando..."}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Header estilo LARQ */}
+        {/* Header */}
         <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/60">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
-            {/* Logo y Nombre */}
             <div className="flex items-center gap-2.5 shrink-0">
               <div className="relative w-9 h-9 shrink-0 flex items-center justify-center">
                 <Image 
@@ -407,7 +427,6 @@ export default function CatalogoPage() {
               </div>
             </div>
 
-            {/* Barra de Búsqueda con Botón X */}
             <div className="flex-1 relative flex items-center">
               <Search className="w-4 h-4 absolute left-3.5 text-neutral-400 pointer-events-none" />
               <input
@@ -429,7 +448,6 @@ export default function CatalogoPage() {
               )}
             </div>
 
-            {/* Carrito Circular con rebote háptico */}
             <button
               onClick={abrirCarrito}
               className={`relative p-2.5 bg-[#0092B8] hover:bg-[#007f9f] text-white rounded-full transition-all shrink-0 shadow-sm shadow-[#0092B8]/25 active:scale-110 ${
@@ -445,7 +463,6 @@ export default function CatalogoPage() {
             </button>
           </div>
 
-          {/* Filtros: Categorías */}
           <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-1 pb-2">
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
               <button
@@ -476,7 +493,6 @@ export default function CatalogoPage() {
               })}
             </div>
 
-            {/* Filtro de Precios Expandible */}
             <div className="flex items-center gap-2 overflow-x-auto pt-2 pb-0.5 scrollbar-none text-[11px] border-t border-neutral-200/40">
               <button
                 type="button"
@@ -624,7 +640,7 @@ export default function CatalogoPage() {
                         <Share2 className="w-3.5 h-3.5" />
                       </button>
 
-                      {/* Badge Oferta en la foto */}
+                      {/* Badge Oferta */}
                       {!esVendido && !esReservado && prod.en_oferta && (
                         <div className="absolute bottom-2.5 left-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md shadow-sm">
                           Oferta
@@ -716,7 +732,7 @@ export default function CatalogoPage() {
         </button>
       )}
 
-      {/* Footer con enlace a Cómo Comprar / Entregas */}
+      {/* Footer */}
       <footer className="max-w-6xl mx-auto w-full px-4 sm:px-6 pt-12 pb-4 text-neutral-500 text-xs flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-neutral-200/60 mt-8 relative z-10">
         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
           <p className="text-[11px]">
@@ -740,7 +756,7 @@ export default function CatalogoPage() {
         </Link>
       </footer>
 
-      {/* Modal Ficha de Producto con Proporción Fija + Swipe */}
+      {/* Modal Ficha de Producto con mayor amplitud vertical */}
       {productoSeleccionado && (
         <div 
           onClick={cerrarModalProducto}
@@ -748,7 +764,7 @@ export default function CatalogoPage() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md bg-white rounded-t-[2rem] sm:rounded-3xl max-h-[92vh] sm:max-h-[88vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200/90 animate-in slide-in-from-bottom duration-200"
+            className="w-full sm:max-w-md bg-white rounded-t-[2.2rem] sm:rounded-3xl h-[96vh] sm:h-auto sm:max-h-[94vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200/90 animate-in slide-in-from-bottom duration-200"
           >
             <div className="px-5 py-3 border-b border-neutral-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-md z-20">
               <span className="text-[10px] font-bold tracking-widest text-[#0092B8] uppercase bg-[#0092B8]/10 px-3 py-1 rounded-full">
@@ -771,7 +787,7 @@ export default function CatalogoPage() {
               </div>
             </div>
 
-            {/* Contenedor con Swipe Táctil */}
+            {/* Contenedor de Imagen con Swipe Táctil */}
             <div 
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
@@ -852,7 +868,7 @@ export default function CatalogoPage() {
                 </div>
               </div>
 
-              {/* Pills de Especificaciones + Insignia de Oferta / Reservado */}
+              {/* Pills de Especificaciones */}
               <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
                 {(productoSeleccionado as any).en_oferta && (
                   <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold flex items-center gap-1 shadow-2xs">
@@ -925,8 +941,10 @@ export default function CatalogoPage() {
                   abrirCarrito();
                 }}
                 className={`w-full py-3.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.99] ${
-                  productoSeleccionado.estado === 'vendido' || (productoSeleccionado as any).estado === 'reservado' || (productoSeleccionado.cantidad ?? 1) <= 0
+                  productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0
                     ? "bg-neutral-100 text-neutral-400 cursor-not-allowed border border-neutral-200"
+                    : (productoSeleccionado as any).estado === 'reservado'
+                    ? "bg-amber-100 text-amber-800 border border-amber-300 cursor-not-allowed"
                     : "bg-[#0092B8] hover:bg-[#007f9f] text-white shadow-[#0092B8]/25"
                 }`}
               >
@@ -945,7 +963,7 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* Drawer del Carrito con Barra de Progreso a Delivery Gratis */}
+      {/* Drawer del Carrito */}
       {carritoAbierto && (
         <div 
           onClick={cerrarCarrito}
@@ -968,7 +986,6 @@ export default function CatalogoPage() {
               </button>
             </div>
 
-            {/* Barra y contador para Delivery Gratis */}
             {carrito.length > 0 && (
               <div className="mt-3 p-3 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-2">
                 <div className="flex items-center justify-between text-[11px] font-semibold">
@@ -1033,7 +1050,7 @@ export default function CatalogoPage() {
                             onClick={() => modificarCantidadCarrito(item.producto.id, -1)}
                             className="p-1 rounded-md bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100"
                           >
-                            <Minus className="w-3 h-3" />
+                            <Minus className="w-3.5 h-3.5" />
                           </button>
                           <span className="font-bold text-neutral-800 min-w-4 text-center">
                             {item.cantidadPedida}
@@ -1047,7 +1064,7 @@ export default function CatalogoPage() {
                                 : "text-neutral-600 hover:bg-neutral-100"
                             }`}
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>

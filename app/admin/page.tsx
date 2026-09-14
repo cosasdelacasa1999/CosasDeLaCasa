@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Producto, Categoria } from "@/lib/types";
+import { Categoria } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { 
   PlusCircle, 
@@ -20,7 +20,6 @@ import {
   Tag,
   Check,
   Search,
-  Share2,
   Download
 } from "lucide-react";
 import Link from "next/link";
@@ -106,7 +105,6 @@ export default function AdminDashboard() {
 
   // Generador de Historias
   const [generandoHistoria, setGenerandoHistoria] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Gestión de Categorías
   const [nuevaCat, setNuevaCat] = useState("");
@@ -373,13 +371,32 @@ export default function AdminDashboard() {
     }
   };
 
-  // Ciclo de estados: Disponible -> Reservado -> Vendido -> Disponible
-  const rotarEstado = async (id: string, estadoActual: string) => {
-    let nuevoEstado = "reservado";
-    if (estadoActual === "reservado") nuevoEstado = "vendido";
-    else if (estadoActual === "vendido") nuevoEstado = "disponible";
+  // Switches deslizantes independientes
+  const toggleVendido = async (id: string, estadoActual: string) => {
+    const nuevoEstado = estadoActual === "vendido" ? "disponible" : "vendido";
+    const { error } = await supabase.from("productos").update({ estado: nuevoEstado }).eq("id", id);
+    if (error) {
+      setModalInfo({
+        title: "Error en base de datos",
+        desc: "Ejecuta el script SQL en Supabase para permitir el estado: " + error.message,
+        type: "error"
+      });
+      return;
+    }
+    cargarDatos();
+  };
 
-    await supabase.from("productos").update({ estado: nuevoEstado }).eq("id", id);
+  const toggleReservado = async (id: string, estadoActual: string) => {
+    const nuevoEstado = estadoActual === "reservado" ? "disponible" : "reservado";
+    const { error } = await supabase.from("productos").update({ estado: nuevoEstado }).eq("id", id);
+    if (error) {
+      setModalInfo({
+        title: "Error en base de datos",
+        desc: "Ejecuta el script SQL en Supabase para permitir el estado 'reservado': " + error.message,
+        type: "error"
+      });
+      return;
+    }
     cargarDatos();
   };
 
@@ -404,7 +421,7 @@ export default function AdminDashboard() {
     cargarDatos();
   };
 
-  // Generador de historias para Instagram / WhatsApp (Canvas 1080x1080)
+  // Generador de historias Instagram con escalado proporcional (sin deformar)
   const generarHistoria = async (prod: any) => {
     setGenerandoHistoria(true);
     const canvas = document.createElement("canvas");
@@ -413,7 +430,7 @@ export default function AdminDashboard() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Fondo degradado nórdico
+    // Fondo degradado
     const grad = ctx.createLinearGradient(0, 0, 0, 1080);
     grad.addColorStop(0, "#e8f7fa");
     grad.addColorStop(0.5, "#f4fafb");
@@ -421,7 +438,7 @@ export default function AdminDashboard() {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1080, 1080);
 
-    // Cabecera de marca
+    // Cabecera
     ctx.fillStyle = "#0092B8";
     ctx.font = "bold 34px sans-serif";
     ctx.fillText("EL BAZAR CUBIDES", 60, 90);
@@ -431,16 +448,21 @@ export default function AdminDashboard() {
     ctx.fillText("VENTA DE GARAJE ONLINE", 60, 130);
 
     // Tarjeta blanca central
+    const boxX = 60;
+    const boxY = 170;
+    const boxW = 960;
+    const boxH = 680;
+
     ctx.fillStyle = "#ffffff";
-    ctx.shadowColor = "rgba(0,0,0,0.08)";
-    ctx.shadowBlur = 30;
-    ctx.shadowOffsetY = 15;
+    ctx.shadowColor = "rgba(0,0,0,0.06)";
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 12;
     ctx.beginPath();
-    ctx.roundRect(60, 170, 960, 680, 36);
+    ctx.roundRect(boxX, boxY, boxW, boxH, 36);
     ctx.fill();
     ctx.shadowColor = "transparent";
 
-    // Cargar imagen de portada
+    // Cargar imagen de portada y pintar preservando proporciones (contain)
     const imgUrl = prod.fotos?.[0] || "/placeholder.png";
     const img = new window.Image();
     img.crossOrigin = "anonymous";
@@ -448,13 +470,32 @@ export default function AdminDashboard() {
 
     await new Promise((resolve) => {
       img.onload = () => {
-        ctx.drawImage(img, 100, 210, 880, 600);
+        const padding = 50;
+        const maxW = boxW - padding * 2;
+        const maxH = boxH - padding * 2;
+
+        const imgRatio = img.width / img.height;
+        const boxRatio = maxW / maxH;
+
+        let renderW = maxW;
+        let renderH = maxH;
+
+        if (imgRatio > boxRatio) {
+          renderH = maxW / imgRatio;
+        } else {
+          renderW = maxH * imgRatio;
+        }
+
+        const renderX = boxX + (boxW - renderW) / 2;
+        const renderY = boxY + (boxH - renderH) / 2;
+
+        ctx.drawImage(img, renderX, renderY, renderW, renderH);
         resolve(true);
       };
       img.onerror = () => resolve(false);
     });
 
-    // Barra inferior informativa
+    // Información inferior
     ctx.fillStyle = "#0f172a";
     ctx.font = "bold 44px sans-serif";
     ctx.fillText(prod.titulo.slice(0, 36), 60, 930);
@@ -464,10 +505,9 @@ export default function AdminDashboard() {
     ctx.fillText(`$${Number(prod.precio).toFixed(2)}`, 60, 1010);
 
     ctx.fillStyle = "#059669";
-    ctx.font = "bold 28px sans-serif";
-    ctx.fillText("Envío disponible en Caracas", 640, 1010);
+    ctx.font = "bold 26px sans-serif";
+    ctx.fillText("Entregas en Caracas", 740, 1010);
 
-    // Descargar PNG
     const dataUrl = canvas.toDataURL("image/png");
     const link = document.createElement("a");
     link.download = `bazar-${prod.titulo.replace(/\s+/g, "-").toLowerCase()}.png`;
@@ -626,7 +666,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Cápsulas de Condición ampliadas */}
+            {/* Cápsulas de Condición */}
             <div>
               <label className="block text-[11px] font-bold text-neutral-500 mb-1.5">Condición del Producto</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
@@ -770,14 +810,13 @@ export default function AdminDashboard() {
           </form>
         </div>
 
-        {/* 2. INVENTARIO CON BUSCADOR Y GENERADOR DE HISTORIAS */}
+        {/* 2. INVENTARIO CON 2 SWITCHES DESLIZANTES */}
         <div className="space-y-3 pt-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
               Inventario ({productosFiltradosAdmin.length})
             </h2>
 
-            {/* Buscador de inventario */}
             <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
               <input
@@ -799,88 +838,121 @@ export default function AdminDashboard() {
           </div>
 
           <div className="space-y-2">
-            {productosFiltradosAdmin.map((item) => (
-              <div
-                key={item.id}
-                className="p-2.5 bg-white border border-neutral-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="relative w-11 h-11 rounded-lg bg-neutral-100 overflow-hidden shrink-0 border border-neutral-200">
-                    {item.fotos && item.fotos[0] ? (
-                      <Image src={item.fotos[0]} alt={item.titulo} fill className="object-cover" />
-                    ) : (
-                      <ImageIcon className="w-4 h-4 text-neutral-400 m-auto" />
-                    )}
-                  </div>
-                  <div className="truncate">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-bold text-xs truncate text-neutral-900">{item.titulo}</p>
-                      {item.en_oferta && (
-                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded shrink-0">
-                          Oferta
-                        </span>
+            {productosFiltradosAdmin.map((item) => {
+              const esVendido = item.estado === "vendido";
+              const esReservado = item.estado === "reservado";
+
+              return (
+                <div
+                  key={item.id}
+                  className="p-3 bg-white border border-neutral-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative w-12 h-12 rounded-xl bg-neutral-100 overflow-hidden shrink-0 border border-neutral-200">
+                      {item.fotos && item.fotos[0] ? (
+                        <Image src={item.fotos[0]} alt={item.titulo} fill className="object-cover" />
+                      ) : (
+                        <ImageIcon className="w-4 h-4 text-neutral-400 m-auto" />
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
-                      <span className="text-[#0092B8] font-black">${Number(item.precio).toFixed(2)}</span>
-                      <span>•</span>
-                      <span className="bg-neutral-100 text-neutral-700 px-1 rounded font-semibold">
-                        Stock: {item.cantidad ?? 1}
-                      </span>
-                      <span>•</span>
-                      <span>{item.condicion || "Usado"}</span>
-                      {item.marca && <span>• {item.marca}</span>}
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-bold text-xs truncate text-neutral-900">{item.titulo}</p>
+                        {item.en_oferta && (
+                          <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded shrink-0">
+                            Oferta
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
+                        <span className="text-[#0092B8] font-black">${Number(item.precio).toFixed(2)}</span>
+                        <span>•</span>
+                        <span className="bg-neutral-100 text-neutral-700 px-1 rounded font-semibold">
+                          Stock: {item.cantidad ?? 1}
+                        </span>
+                        <span>•</span>
+                        <span>{item.condicion || "Usado"}</span>
+                        {item.marca && <span>• {item.marca}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2 BOTONES DESLIZANTES TIPO SWITCH */}
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-neutral-100">
+                    <div className="flex items-center gap-3 bg-neutral-50 px-2.5 py-1.5 rounded-xl border border-neutral-200/70">
+                      
+                      {/* Switch Reservado */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10.5px] font-semibold text-neutral-600">Reservado</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleReservado(item.id, item.estado)}
+                          className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors duration-200 ${
+                            esReservado ? "bg-amber-500" : "bg-neutral-200"
+                          }`}
+                        >
+                          <div
+                            className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ${
+                              esReservado ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      <div className="w-[1px] h-4 bg-neutral-200" />
+
+                      {/* Switch Vendido */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10.5px] font-semibold text-neutral-600">Vendido</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleVendido(item.id, item.estado)}
+                          className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors duration-200 ${
+                            esVendido ? "bg-red-600" : "bg-neutral-200"
+                          }`}
+                        >
+                          <div
+                            className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ${
+                              esVendido ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => generarHistoria(item)}
+                        disabled={generandoHistoria}
+                        className="p-1.5 text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                        title="Descargar imagen para Stories"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => iniciarEdicion(item)}
+                        className="p-1.5 text-neutral-500 hover:text-[#0092B8] hover:bg-cyan-50 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => eliminarProducto(item.id)}
+                        className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* Generador de Imagen para Stories */}
-                  <button
-                    onClick={() => generarHistoria(item)}
-                    disabled={generandoHistoria}
-                    className="p-1.5 text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                    title="Descargar imagen para historia de Instagram / WhatsApp"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={() => iniciarEdicion(item)}
-                    className="p-1.5 text-neutral-500 hover:text-[#0092B8] hover:bg-cyan-50 rounded-lg transition-colors"
-                    title="Editar"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-
-                  {/* Botón de 3 Estados: Disponible -> Reservado -> Vendido */}
-                  <button
-                    onClick={() => rotarEstado(item.id, item.estado)}
-                    className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all ${
-                      item.estado === "vendido"
-                        ? "bg-red-50 text-red-600 border border-red-200"
-                        : item.estado === "reservado"
-                        ? "bg-amber-100 text-amber-800 border border-amber-300"
-                        : "bg-teal-50 text-teal-700 border border-teal-200"
-                    }`}
-                    title="Toca para alternar: Disp. -> Reservado -> Vendido"
-                  >
-                    {item.estado === "vendido" ? "Vendido" : item.estado === "reservado" ? "Reservado" : "Disp."}
-                  </button>
-
-                  <button
-                    onClick={() => eliminarProducto(item.id)}
-                    className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* 3. GESTIÓN DE CATEGORÍAS (Al final) */}
+        {/* 3. GESTIÓN DE CATEGORÍAS */}
         <div className="bg-white border border-neutral-200 p-4 rounded-2xl shadow-2xs space-y-3">
           <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
             <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
