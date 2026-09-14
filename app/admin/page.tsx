@@ -14,7 +14,9 @@ import {
   ArrowLeft,
   Edit2,
   X,
-  Star
+  Star,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -72,7 +74,7 @@ export default function AdminDashboard() {
   // Modo Edición
   const [editandoId, setEditandoId] = useState<string | null>(null);
 
-  // Estados del Formulario
+  // Estados del Formulario (con recuperación de localStorage)
   const [titulo, setTitulo] = useState("");
   const [marca, setMarca] = useState("");
   const [condicion, setCondicion] = useState("Usado");
@@ -86,13 +88,44 @@ export default function AdminDashboard() {
   const [subiendo, setSubiendo] = useState(false);
   const [estadoSubida, setEstadoSubida] = useState("");
 
+  // Modal personalizado bonito
+  const [modalInfo, setModalInfo] = useState<{ title: string; desc: string; type: 'success' | 'error' } | null>(null);
+
   // Nueva Categoría
   const [nuevaCat, setNuevaCat] = useState("");
   const [creandoCat, setCreandoCat] = useState(false);
 
   useEffect(() => {
     verificarSesion();
+    // Recuperar borrador si existía
+    const borrador = localStorage.getItem("bazar_draft_form");
+    if (borrador) {
+      try {
+        const data = JSON.parse(borrador);
+        setTitulo(data.titulo || "");
+        setMarca(data.marca || "");
+        setCondicion(data.condicion || "Usado");
+        setFuncionalidad(data.funcionalidad || "Operativo");
+        setDescripcion(data.descripcion || "");
+        setPrecio(data.precio || "");
+        setCantidad(data.cantidad || "1");
+      } catch (e) {
+        console.error(e);
+      }
+    }
   }, []);
+
+  // Guardar borrador automáticamente en localStorage ante cualquier cambio
+  useEffect(() => {
+    if (!editandoId) {
+      const draft = { titulo, marca, condicion, funcionalidad, descripcion, precio, cantidad };
+      localStorage.setItem("bazar_draft_form", JSON.stringify(draft));
+    }
+  }, [titulo, marca, condicion, funcionalidad, descripcion, precio, cantidad, editandoId]);
+
+  const limpiarBorrador = () => {
+    localStorage.removeItem("bazar_draft_form");
+  };
 
   async function verificarSesion() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -151,7 +184,6 @@ export default function AdminDashboard() {
     setPreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Mueve la foto seleccionada a la primera posición (Portada)
   const definirComoPortada = (index: number) => {
     if (index === 0) return;
     setArchivos((prev) => {
@@ -192,6 +224,7 @@ export default function AdminDashboard() {
     setCantidad("1");
     setArchivos([]);
     setPreviews([]);
+    limpiarBorrador();
   };
 
   const handleGuardarProducto = async (e: React.FormEvent) => {
@@ -203,7 +236,6 @@ export default function AdminDashboard() {
     try {
       let urlsFotos: string[] = [];
 
-      // Subir fotos nuevas comprimidas
       if (archivos.length > 0) {
         for (let i = 0; i < archivos.length; i++) {
           setEstadoSubida(`Subiendo foto ${i + 1} de ${archivos.length}...`);
@@ -211,17 +243,24 @@ export default function AdminDashboard() {
           const blobComprimido = await comprimirImagen(file);
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
 
-          const { error: uploadError } = await supabase.storage
-            .from("productos")
-            .upload(fileName, blobComprimido, {
-              contentType: "image/jpeg",
-              upsert: false
-            });
+          // Sistema de reintento automático (2 intentos por foto)
+          let uploadError = null;
+          let intento = 0;
+          while (intento < 2) {
+            const res = await supabase.storage
+              .from("productos")
+              .upload(fileName, blobComprimido, {
+                contentType: "image/jpeg",
+                upsert: false
+              });
+            uploadError = res.error;
+            if (!uploadError) break;
+            intento++;
+            await new Promise((r) => setTimeout(r, 1000)); // Esperar 1s antes de reintentar
+          }
 
           if (uploadError) {
-            console.error("Error al subir imagen:", uploadError);
-            alert(`Error subiendo imagen: ${uploadError.message}`);
-            continue;
+            throw new Error(`No se pudo subir la foto ${i + 1}: ${uploadError.message}`);
           }
 
           const { data } = supabase.storage.from("productos").getPublicUrl(fileName);
@@ -244,7 +283,6 @@ export default function AdminDashboard() {
           categoria_id: categoriaId,
         };
 
-        // Si seleccionó fotos nuevas, reemplaza; si no, conserva las actuales
         if (urlsFotos.length > 0) {
           updatePayload.fotos = urlsFotos;
         } else if (previews.length > 0 && prodExistente) {
@@ -272,11 +310,20 @@ export default function AdminDashboard() {
         cancelarEdicion();
       }
 
+      limpiarBorrador();
       await cargarDatos();
-      alert("¡Guardado con éxito!");
+      setModalInfo({
+        title: "¡Publicado con éxito!",
+        desc: "El artículo ya está disponible en el catálogo público del bazar.",
+        type: "success"
+      });
     } catch (err: any) {
       console.error(err);
-      alert(`Error al guardar: ${err.message || "Verifica tu conexión"}`);
+      setModalInfo({
+        title: "Error al guardar",
+        desc: err.message || "Hubo un problema de conexión. Inténtalo de nuevo.",
+        type: "error"
+      });
     } finally {
       setSubiendo(false);
       setEstadoSubida("");
@@ -320,7 +367,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f5f4] text-neutral-800 font-sans pb-24">
+    <div className="min-h-screen bg-[#f5f5f4] text-neutral-800 font-sans pb-24 relative">
       {/* Barra Superior */}
       <header className="sticky top-0 z-30 bg-teal-800 text-white px-4 py-3 shadow-sm">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
@@ -510,7 +557,7 @@ export default function AdminDashboard() {
             {/* Subida de Fotos con Selección de Portada */}
             <div>
               <label className="block text-[11px] font-bold text-neutral-500 mb-1">
-                {editandoId ? "Fotos (Toca una foto para hacerla Portada)" : "Fotos (Toca una foto para hacerla Portada)"}
+                Fotos (Toca una foto para hacerla Portada)
               </label>
 
               <label className="flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 hover:border-cyan-500 rounded-xl p-3 cursor-pointer bg-neutral-50 transition-colors">
@@ -557,7 +604,6 @@ export default function AdminDashboard() {
                           className="w-full h-full object-cover"
                         />
 
-                        {/* Indicador de Portada */}
                         {index === 0 ? (
                           <span className="absolute top-1 left-1 bg-cyan-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xs">
                             <Star className="w-2.5 h-2.5 fill-current" /> Portada
@@ -666,6 +712,35 @@ export default function AdminDashboard() {
           </div>
         </div>
       </main>
+
+      {/* Modal Personalizado Bonito (Reemplazo de alert nativo) */}
+      {modalInfo && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 text-center space-y-4 border border-neutral-200 animate-in zoom-in-95 duration-200">
+            <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center ${
+              modalInfo.type === 'success' ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-600'
+            }`}>
+              {modalInfo.type === 'success' ? (
+                <CheckCircle2 className="w-7 h-7" />
+              ) : (
+                <AlertCircle className="w-7 h-7" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-black text-neutral-900">{modalInfo.title}</h3>
+              <p className="text-xs text-neutral-600 leading-relaxed">{modalInfo.desc}</p>
+            </div>
+
+            <button
+              onClick={() => setModalInfo(null)}
+              className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm"
+            >
+              Aceptar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
