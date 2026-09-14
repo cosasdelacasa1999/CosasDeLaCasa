@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Producto, Categoria, ItemCarrito } from "@/lib/types";
 import { 
@@ -26,7 +26,9 @@ import {
   Send,
   MapPin,
   CreditCard,
-  Store
+  Store,
+  ArrowUp,
+  Clock
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -61,6 +63,15 @@ export default function CatalogoPage() {
   const [zonaEntrega, setZonaEntrega] = useState("");
   const [metodoPago, setMetodoPago] = useState("Efectivo en Dólares ($)");
 
+  // Animaciones y Scroll to top
+  const [mostrarScrollTop, setMostrarScrollTop] = useState(false);
+  const [carritoRebote, setCarritoRebote] = useState(false);
+  const [productoAgregadoId, setProductoAgregadoId] = useState<string | null>(null);
+
+  // Swipe táctil en modal
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+
   // Tasa BCV
   const [tasaBcv, setTasaBcv] = useState<number | null>(null);
 
@@ -81,15 +92,24 @@ export default function CatalogoPage() {
     }
 
     cargarDatosFrescos();
+
+    const handleScroll = () => {
+      setMostrarScrollTop(window.scrollY > 400);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   async function cargarDatosFrescos() {
-    try {
-      const [catsRes, prodsRes, bcvRes] = await Promise.allSettled([
-        supabase.from("categorias").select("*").order("nombre"),
-        supabase.from("productos").select("*, categorias(*)").order("created_at", { ascending: false }),
-        fetch("https://ve.dolarapi.com/v1/dolares/oficial").then((r) => r.json()),
-      ]);
+  try {
+    const [catsRes, prodsRes, bcvRes] = await Promise.allSettled([
+      supabase.from("categorias").select("*").order("nombre"),
+      supabase.from("productos").select("*, categorias(*)").order("created_at", { ascending: false }),
+      fetch(`https://ve.dolarapi.com/v1/dolares/oficial?t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache" }
+      }).then((r) => r.json()),
+    ]);
 
       if (catsRes.status === "fulfilled" && catsRes.value.data) {
         setCategorias(catsRes.value.data);
@@ -191,9 +211,16 @@ export default function CatalogoPage() {
     }).format(totalBs);
   };
 
+  const dispararEfectoCarrito = (id: string) => {
+    setProductoAgregadoId(id);
+    setCarritoRebote(true);
+    setTimeout(() => setProductoAgregadoId(null), 1200);
+    setTimeout(() => setCarritoRebote(false), 600);
+  };
+
   const agregarAlCarrito = (producto: Producto, cant: number = 1, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (producto.estado === "vendido" || (producto.cantidad ?? 1) <= 0) return;
+    if (producto.estado === "vendido" || (producto as any).estado === "reservado" || (producto.cantidad ?? 1) <= 0) return;
 
     setCarrito((prev) => {
       const index = prev.findIndex((item) => item.producto.id === producto.id);
@@ -208,6 +235,8 @@ export default function CatalogoPage() {
         return [...prev, { producto, cantidadPedida: Math.min(cant, stockMax) }];
       }
     });
+
+    dispararEfectoCarrito(producto.id);
   };
 
   const modificarCantidadCarrito = (id: string, delta: number) => {
@@ -234,6 +263,31 @@ export default function CatalogoPage() {
     0
   );
   const totalArticulos = carrito.reduce((acc, item) => acc + item.cantidadPedida, 0);
+
+  // Swipe handlers para el visor de imágenes
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current || !productoSeleccionado?.fotos) return;
+    const distance = touchStartX.current - touchEndX.current;
+    const isLeftSwipe = distance > 45;
+    const isRightSwipe = distance < -45;
+
+    if (isLeftSwipe) {
+      setModalFotoIndex((prev) => (prev + 1) % productoSeleccionado.fotos.length);
+    } else if (isRightSwipe) {
+      setModalFotoIndex((prev) => (prev - 1 + productoSeleccionado.fotos.length) % productoSeleccionado.fotos.length);
+    }
+
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
 
   const enviarPedidoWhatsApp = (e: React.FormEvent) => {
     e.preventDefault();
@@ -288,6 +342,9 @@ export default function CatalogoPage() {
     ? Array(Math.max(6, Math.ceil(12 / baseRecientes.length))).fill(baseRecientes).flat()
     : [];
 
+  const faltaParaDelivery = Math.max(0, 25 - totalCarrito);
+  const porcentajeDelivery = Math.min(100, (totalCarrito / 25) * 100);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#e8f7fa] via-[#f4fafb] to-white text-neutral-900 selection:bg-[#0092B8] selection:text-white pb-20 relative flex flex-col justify-between font-sans">
       
@@ -308,7 +365,7 @@ export default function CatalogoPage() {
       )}
 
       <div>
-        {/* Banner Superior 100% Horizontal sin saltos de línea */}
+        {/* Banner Superior 100% Horizontal */}
         <div className="bg-gradient-to-r from-[#0092B8] via-[#0081a2] to-[#e6b849] text-white text-xs py-1.5 px-3 sm:px-4 shadow-xs relative z-40 overflow-hidden">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 whitespace-nowrap flex-nowrap text-[10.5px] sm:text-xs">
             <button 
@@ -372,10 +429,12 @@ export default function CatalogoPage() {
               )}
             </div>
 
-            {/* Carrito Circular Turquesa */}
+            {/* Carrito Circular con rebote háptico */}
             <button
               onClick={abrirCarrito}
-              className="relative p-2.5 bg-[#0092B8] hover:bg-[#007f9f] text-white rounded-full transition-all shrink-0 shadow-sm shadow-[#0092B8]/25 active:scale-110"
+              className={`relative p-2.5 bg-[#0092B8] hover:bg-[#007f9f] text-white rounded-full transition-all shrink-0 shadow-sm shadow-[#0092B8]/25 active:scale-110 ${
+                carritoRebote ? "scale-125 bg-emerald-600 transition-transform duration-200" : ""
+              }`}
             >
               <ShoppingCart className="w-4 h-4" />
               {totalArticulos > 0 && (
@@ -525,8 +584,10 @@ export default function CatalogoPage() {
               {productosFiltrados.map((prod: any) => {
                 const stock = prod.cantidad ?? 1;
                 const esVendido = prod.estado === "vendido" || stock <= 0;
+                const esReservado = prod.estado === "reservado";
                 const enCarrito = carrito.some((item) => item.producto.id === prod.id);
                 const fotos = prod.fotos && prod.fotos.length > 0 ? prod.fotos : ["/placeholder.png"];
+                const recienAgregado = productoAgregadoId === prod.id;
 
                 return (
                   <div
@@ -535,6 +596,8 @@ export default function CatalogoPage() {
                     className={`group bg-white rounded-3xl border overflow-hidden flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-xs hover:shadow-md ${
                       esVendido 
                         ? "border-red-200/70 opacity-60 bg-red-50/10" 
+                        : esReservado
+                        ? "border-amber-300/80 bg-amber-50/15"
                         : prod.en_oferta
                         ? "border-amber-300 hover:border-amber-400"
                         : "border-neutral-200/80 hover:border-[#0092B8]/50"
@@ -562,9 +625,18 @@ export default function CatalogoPage() {
                       </button>
 
                       {/* Badge Oferta en la foto */}
-                      {!esVendido && prod.en_oferta && (
+                      {!esVendido && !esReservado && prod.en_oferta && (
                         <div className="absolute bottom-2.5 left-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md shadow-sm">
-                        Oferta
+                          Oferta
+                        </div>
+                      )}
+
+                      {/* Badge Reservado */}
+                      {!esVendido && esReservado && (
+                        <div className="absolute inset-0 bg-amber-500/75 backdrop-blur-xs flex items-center justify-center">
+                          <span className="text-white text-[10px] font-black tracking-widest uppercase bg-black/40 px-2 py-0.5 rounded-full">
+                            Reservado
+                          </span>
                         </div>
                       )}
 
@@ -578,7 +650,7 @@ export default function CatalogoPage() {
                       )}
 
                       {/* Badge Stock */}
-                      {!esVendido && stock > 1 && (
+                      {!esVendido && !esReservado && stock > 1 && (
                         <div className="absolute top-2.5 left-2.5 bg-neutral-900/80 backdrop-blur-xs text-white text-[9px] font-semibold px-2 py-0.5 rounded-full">
                           {stock} disp.
                         </div>
@@ -609,18 +681,20 @@ export default function CatalogoPage() {
                       </div>
 
                       <button
-                        disabled={esVendido}
+                        disabled={esVendido || esReservado}
                         onClick={(e) => agregarAlCarrito(prod, 1, e)}
                         className={`w-full py-2 px-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                          esVendido
+                          esVendido || esReservado
                             ? "bg-neutral-100 text-neutral-400 cursor-not-allowed"
+                            : recienAgregado
+                            ? "bg-emerald-600 text-white scale-[1.02]"
                             : enCarrito
                             ? "bg-teal-50 text-teal-800 border border-teal-200"
-                            : "bg-[#0092B8] hover:bg-[#007f9f] text-white shadow-xs shadow-[#0092B8]/20"
+                            : "bg-[#0092B8] hover:bg-[#007f9f] text-white shadow-xs shadow-[#0092B8]/20 active:scale-95"
                         }`}
                       >
-                        {esVendido ? "Agotado" : enCarrito ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                        <span>{esVendido ? "" : enCarrito ? "Agregado" : "Agregar"}</span>
+                        {esVendido ? "Agotado" : esReservado ? "Apartado" : recienAgregado ? <CheckCircle2 className="w-3.5 h-3.5" /> : enCarrito ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                        <span>{esVendido ? "" : esReservado ? "Reservado" : recienAgregado ? "¡Agregado!" : enCarrito ? "Agregado" : "Agregar"}</span>
                       </button>
                     </div>
                   </div>
@@ -630,6 +704,17 @@ export default function CatalogoPage() {
           )}
         </main>
       </div>
+
+      {/* Botón Flotante Scroll to Top */}
+      {mostrarScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed bottom-6 right-5 z-40 p-3 bg-white/90 hover:bg-white text-neutral-800 rounded-full shadow-lg border border-neutral-200/80 backdrop-blur-md transition-all active:scale-90"
+          title="Subir al inicio"
+        >
+          <ArrowUp className="w-4 h-4 text-[#0092B8]" />
+        </button>
+      )}
 
       {/* Footer con enlace a Cómo Comprar / Entregas */}
       <footer className="max-w-6xl mx-auto w-full px-4 sm:px-6 pt-12 pb-4 text-neutral-500 text-xs flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-neutral-200/60 mt-8 relative z-10">
@@ -655,7 +740,7 @@ export default function CatalogoPage() {
         </Link>
       </footer>
 
-      {/* Modal Ficha de Producto con Proporción Fija */}
+      {/* Modal Ficha de Producto con Proporción Fija + Swipe */}
       {productoSeleccionado && (
         <div 
           onClick={cerrarModalProducto}
@@ -686,12 +771,16 @@ export default function CatalogoPage() {
               </div>
             </div>
 
+            {/* Contenedor con Swipe Táctil */}
             <div 
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
               onClick={() => {
                 const fotoActual = productoSeleccionado.fotos?.[modalFotoIndex] || productoSeleccionado.fotos?.[0];
                 if (fotoActual) setFotoFullscreen(fotoActual);
               }}
-              className="relative aspect-4/3 w-full bg-[#f4f5f7] flex items-center justify-center overflow-hidden shrink-0 cursor-zoom-in group"
+              className="relative aspect-4/3 w-full bg-[#f4f5f7] flex items-center justify-center overflow-hidden shrink-0 cursor-zoom-in group select-none"
             >
               {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 0 ? (
                 <Image
@@ -700,7 +789,7 @@ export default function CatalogoPage() {
                   fill
                   priority
                   sizes="(max-width: 640px) 100vw, 500px"
-                  className="object-contain p-4 select-none"
+                  className="object-contain p-4 select-none pointer-events-none"
                 />
               ) : (
                 <div className="text-neutral-400 text-xs">Sin fotos disponibles</div>
@@ -763,11 +852,16 @@ export default function CatalogoPage() {
                 </div>
               </div>
 
-              {/* Pills de Especificaciones + Insignia de Oferta */}
+              {/* Pills de Especificaciones + Insignia de Oferta / Reservado */}
               <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
                 {(productoSeleccionado as any).en_oferta && (
                   <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                     En Oferta
+                  </span>
+                )}
+                {(productoSeleccionado as any).estado === 'reservado' && (
+                  <span className="px-3 py-1 bg-amber-500 text-white font-bold rounded-full flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Apartado / Reservado
                   </span>
                 )}
                 <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
@@ -798,7 +892,7 @@ export default function CatalogoPage() {
                 </div>
               )}
 
-              {productoSeleccionado.estado !== 'vendido' && (productoSeleccionado.cantidad ?? 1) > 1 && (
+              {productoSeleccionado.estado !== 'vendido' && (productoSeleccionado as any).estado !== 'reservado' && (productoSeleccionado.cantidad ?? 1) > 1 && (
                 <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-2xl border border-neutral-200/70">
                   <span className="text-xs font-semibold text-neutral-700">Cantidad a llevar:</span>
                   <div className="flex items-center gap-3">
@@ -824,20 +918,22 @@ export default function CatalogoPage() {
               )}
 
               <button
-                disabled={productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0}
+                disabled={productoSeleccionado.estado === 'vendido' || (productoSeleccionado as any).estado === 'reservado' || (productoSeleccionado.cantidad ?? 1) <= 0}
                 onClick={() => {
                   agregarAlCarrito(productoSeleccionado, cantidadModal);
                   cerrarModalProducto();
                   abrirCarrito();
                 }}
                 className={`w-full py-3.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.99] ${
-                  productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0
+                  productoSeleccionado.estado === 'vendido' || (productoSeleccionado as any).estado === 'reservado' || (productoSeleccionado.cantidad ?? 1) <= 0
                     ? "bg-neutral-100 text-neutral-400 cursor-not-allowed border border-neutral-200"
                     : "bg-[#0092B8] hover:bg-[#007f9f] text-white shadow-[#0092B8]/25"
                 }`}
               >
                 {productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0 ? (
                   "Artículo no disponible"
+                ) : (productoSeleccionado as any).estado === 'reservado' ? (
+                  "Artículo Apartado"
                 ) : (
                   <>
                     <ShoppingCart className="w-4 h-4" /> Añadir al Carrito ({cantidadModal})
@@ -849,7 +945,7 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* Drawer del Carrito */}
+      {/* Drawer del Carrito con Barra de Progreso a Delivery Gratis */}
       {carritoAbierto && (
         <div 
           onClick={cerrarCarrito}
@@ -871,6 +967,29 @@ export default function CatalogoPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Barra y contador para Delivery Gratis */}
+            {carrito.length > 0 && (
+              <div className="mt-3 p-3 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-semibold">
+                  {faltaParaDelivery > 0 ? (
+                    <span className="text-neutral-700">
+                      Agrega <strong className="text-[#0092B8]">${faltaParaDelivery.toFixed(2)}</strong> más para <strong>Delivery Gratis</strong> en Caracas
+                    </span>
+                  ) : (
+                    <span className="text-emerald-700 font-bold flex items-center gap-1">
+                      <Truck className="w-3.5 h-3.5 text-emerald-600" /> ¡Desbloqueaste Delivery Gratis!
+                    </span>
+                  )}
+                </div>
+                <div className="w-full bg-neutral-200 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-[#0092B8] to-emerald-500 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${porcentajeDelivery}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {carrito.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-neutral-400 text-xs">
@@ -951,13 +1070,6 @@ export default function CatalogoPage() {
                     )}
                   </div>
                 </div>
-
-                {totalCarrito >= 25 && (
-                  <div className="text-[11px] bg-teal-50 border border-teal-200 text-teal-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-medium">
-                    <Truck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                    ¡Genial! Calificas para <strong>Delivery Gratis</strong>.
-                  </div>
-                )}
 
                 <button
                   onClick={() => setConfirmarPedidoAbierto(true)}
