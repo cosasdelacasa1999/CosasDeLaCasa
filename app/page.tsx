@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { Producto, Categoria, ItemCarrito } from "@/lib/types";
 import { 
@@ -17,15 +17,25 @@ import {
   Plus,
   Minus,
   Lock,
-  Coins
+  Coins,
+  Share2,
+  SlidersHorizontal
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+
+const RANGOS_PRECIO = [
+  { id: "todos", label: "Cualquier precio" },
+  { id: "hasta10", label: "Menos de $10", max: 10 },
+  { id: "10a25", label: "$10 a $25", min: 10, max: 25 },
+  { id: "mas25", label: "Más de $25", min: 25 },
+];
 
 export default function CatalogoPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<string>("todas");
+  const [rangoPrecioSeleccionado, setRangoPrecioSeleccionado] = useState<string>("todos");
   const [busqueda, setBusqueda] = useState<string>("");
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [carritoAbierto, setCarritoAbierto] = useState(false);
@@ -33,12 +43,13 @@ export default function CatalogoPage() {
   const [modalFotoIndex, setModalFotoIndex] = useState<number>(0);
   const [cantidadModal, setCantidadModal] = useState<number>(1);
   const [loading, setLoading] = useState(true);
+  const [copiadoToast, setCopiadoToast] = useState(false);
 
   // Tasa BCV
   const [tasaBcv, setTasaBcv] = useState<number | null>(null);
 
   useEffect(() => {
-    // 1. Cargar datos cacheados inmediatamente para evitar la pantalla en blanco
+    // 1. Cargar datos cacheados inmediatamente para evitar pantallas en blanco
     const cachedProds = localStorage.getItem("bazar_prods_cache");
     const cachedCats = localStorage.getItem("bazar_cats_cache");
     const cachedBcv = localStorage.getItem("bazar_bcv_cache");
@@ -88,6 +99,69 @@ export default function CatalogoPage() {
       setLoading(false);
     }
   }
+
+  // Manejo del botón de "Atrás" en teléfonos móviles para cerrar modales
+  useEffect(() => {
+    const handlePopState = () => {
+      if (productoSeleccionado) {
+        setProductoSeleccionado(null);
+      } else if (carritoAbierto) {
+        setCarritoAbierto(false);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [productoSeleccionado, carritoAbierto]);
+
+  const abrirModalProducto = (prod: Producto) => {
+    window.history.pushState({ modal: "producto" }, "");
+    setProductoSeleccionado(prod);
+    setModalFotoIndex(0);
+    setCantidadModal(1);
+  };
+
+  const cerrarModalProducto = useCallback(() => {
+    if (productoSeleccionado) {
+      setProductoSeleccionado(null);
+      if (window.history.state?.modal === "producto") {
+        window.history.back();
+      }
+    }
+  }, [productoSeleccionado]);
+
+  const abrirCarrito = () => {
+    window.history.pushState({ modal: "carrito" }, "");
+    setCarritoAbierto(true);
+  };
+
+  const cerrarCarrito = useCallback(() => {
+    if (carritoAbierto) {
+      setCarritoAbierto(false);
+      if (window.history.state?.modal === "carrito") {
+        window.history.back();
+      }
+    }
+  }, [carritoAbierto]);
+
+  // Compartir producto
+  const compartirProducto = (prod: Producto, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const url = typeof window !== "undefined" ? window.location.href.split("?")[0] : "";
+    const texto = `¡Mira este artículo en El Bazar Cubides!: ${prod.titulo} por $${Number(prod.precio).toFixed(2)}`;
+
+    if (navigator.share) {
+      navigator.share({
+        title: prod.titulo,
+        text: texto,
+        url: url,
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(`${texto}\n${url}`);
+      setCopiadoToast(true);
+      setTimeout(() => setCopiadoToast(false), 2000);
+    }
+  };
 
   // Formateador de Bolívares
   const formatoBs = (montoUsd: number) => {
@@ -169,14 +243,23 @@ export default function CatalogoPage() {
     window.open(url, "_blank");
   };
 
+  // Filtrado múltiple: Categoría, Búsqueda y Rango de Precio
   const productosFiltrados = productos.filter((prod) => {
     const coincideCat = categoriaSeleccionada === "todas" || prod.categoria_id === categoriaSeleccionada;
+    
     const q = busqueda.toLowerCase();
     const coincideBusqueda = 
       prod.titulo.toLowerCase().includes(q) || 
       (prod.marca && prod.marca.toLowerCase().includes(q)) ||
       (prod.descripcion && prod.descripcion.toLowerCase().includes(q));
-    return coincideCat && coincideBusqueda;
+
+    const p = Number(prod.precio);
+    let coincidePrecio = true;
+    if (rangoPrecioSeleccionado === "hasta10") coincidePrecio = p < 10;
+    else if (rangoPrecioSeleccionado === "10a25") coincidePrecio = p >= 10 && p <= 25;
+    else if (rangoPrecioSeleccionado === "mas25") coincidePrecio = p > 25;
+
+    return coincideCat && coincideBusqueda && coincidePrecio;
   });
 
   return (
@@ -189,6 +272,13 @@ export default function CatalogoPage() {
           backgroundSize: '16px 16px'
         }}
       />
+
+      {/* Toast copiado en portapapeles */}
+      {copiadoToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg animate-in fade-in duration-150">
+          Enlace copiado al portapapeles
+        </div>
+      )}
 
       <div>
         {/* Banner Promocional y Monitor BCV */}
@@ -244,7 +334,7 @@ export default function CatalogoPage() {
 
             {/* Carrito */}
             <button
-              onClick={() => setCarritoAbierto(true)}
+              onClick={abrirCarrito}
               className="relative p-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-full transition-all shrink-0 shadow-sm shadow-cyan-600/30"
             >
               <ShoppingCart className="w-4 h-4" />
@@ -256,9 +346,9 @@ export default function CatalogoPage() {
             </button>
           </div>
 
-          {/* Categorías */}
-          <div className="max-w-6xl mx-auto px-3 pb-2 pt-1">
-            <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-[11px]">
+          {/* Filtros: Categorías */}
+          <div className="max-w-6xl mx-auto px-3 pt-1 pb-1.5">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
               <button
                 onClick={() => setCategoriaSeleccionada("todas")}
                 className={`px-3 py-1 rounded-full whitespace-nowrap font-medium transition-all ${
@@ -286,13 +376,32 @@ export default function CatalogoPage() {
                 );
               })}
             </div>
+
+            {/* Filtros: Rango de Precio */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pt-0.5 pb-0.5 scrollbar-none text-[10px] border-t border-neutral-100">
+              <span className="text-neutral-400 font-medium shrink-0 flex items-center gap-1">
+                <SlidersHorizontal className="w-3 h-3 text-cyan-600" /> Precio:
+              </span>
+              {RANGOS_PRECIO.map((rango) => (
+                <button
+                  key={rango.id}
+                  onClick={() => setRangoPrecioSeleccionado(rango.id)}
+                  className={`px-2.5 py-0.5 rounded-md whitespace-nowrap font-medium transition-all ${
+                    rangoPrecioSeleccionado === rango.id
+                      ? "bg-teal-700 text-white"
+                      : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+                  }`}
+                >
+                  {rango.label}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
         {/* Grid del Catálogo */}
         <main className="max-w-6xl mx-auto px-2 sm:px-4 pt-3 relative z-10">
           {loading && productos.length === 0 ? (
-            /* Skeleton Loader inmediato */
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="bg-white rounded-xl border border-neutral-200 p-2 animate-pulse space-y-2">
@@ -305,7 +414,7 @@ export default function CatalogoPage() {
           ) : productosFiltrados.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-2xl border border-neutral-200/70 p-6 mx-2 mt-4 shadow-xs">
               <Sparkles className="w-8 h-8 text-cyan-600/40 mx-auto mb-2" />
-              <p className="text-xs text-neutral-500 font-medium">No hay productos que coincidan con tu búsqueda.</p>
+              <p className="text-xs text-neutral-500 font-medium">No hay productos que coincidan con estos filtros.</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3.5">
@@ -318,16 +427,12 @@ export default function CatalogoPage() {
                 return (
                   <div
                     key={prod.id}
-                    onClick={() => {
-                      setProductoSeleccionado(prod);
-                      setModalFotoIndex(0);
-                      setCantidadModal(1);
-                    }}
+                    onClick={() => abrirModalProducto(prod)}
                     className={`group bg-white rounded-xl border overflow-hidden flex flex-col justify-between cursor-pointer transition-all duration-150 shadow-2xs hover:shadow-md ${
                       esVendido ? "border-red-200/70 opacity-60 bg-red-50/10" : "border-neutral-200/80 hover:border-cyan-400"
                     }`}
                   >
-                    {/* Contenedor Imagen limpia (Sin precios encima) */}
+                    {/* Contenedor Imagen limpia */}
                     <div className="relative aspect-square w-full bg-neutral-100 overflow-hidden">
                       {fotos[0] !== "/placeholder.png" ? (
                         <Image
@@ -340,6 +445,15 @@ export default function CatalogoPage() {
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-[10px] text-neutral-400">Sin foto</div>
                       )}
+
+                      {/* Botón rápido de compartir */}
+                      <button
+                        onClick={(e) => compartirProducto(prod, e)}
+                        className="absolute top-1.5 right-1.5 p-1 bg-white/80 hover:bg-white text-neutral-700 rounded-full shadow-xs backdrop-blur-xs transition-colors"
+                        title="Compartir"
+                      >
+                        <Share2 className="w-3 h-3" />
+                      </button>
 
                       {/* Badge Vendido */}
                       {esVendido && (
@@ -370,7 +484,7 @@ export default function CatalogoPage() {
                           {prod.titulo}
                         </h3>
 
-                        {/* Bloque de Precio limpio */}
+                        {/* Bloque de Precio */}
                         <div className="pt-0.5">
                           <div className="text-xs sm:text-sm font-black text-neutral-900 leading-none">
                             ${Number(prod.precio).toFixed(0)}
@@ -426,24 +540,34 @@ export default function CatalogoPage() {
       {/* Modal de Detalle */}
       {productoSeleccionado && (
         <div 
-          onClick={() => setProductoSeleccionado(null)}
+          onClick={cerrarModalProducto}
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
             className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200 animate-in slide-in-from-bottom duration-200"
           >
-            {/* Cabecera modal */}
+            {/* Cabecera modal con botón Compartir y Cerrar */}
             <div className="p-3 border-b border-neutral-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-xs z-10">
               <span className="text-xs font-bold text-cyan-700 uppercase tracking-wider">
                 {productoSeleccionado.categorias?.nombre || "Detalle"}
               </span>
-              <button 
-                onClick={() => setProductoSeleccionado(null)}
-                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => compartirProducto(productoSeleccionado)}
+                  className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-600 flex items-center gap-1 text-xs font-medium"
+                  title="Compartir"
+                >
+                  <Share2 className="w-4 h-4 text-cyan-700" />
+                  <span className="hidden sm:inline">Compartir</span>
+                </button>
+                <button 
+                  onClick={cerrarModalProducto}
+                  className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Galería grande */}
@@ -572,8 +696,8 @@ export default function CatalogoPage() {
                 disabled={productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0}
                 onClick={() => {
                   agregarAlCarrito(productoSeleccionado, cantidadModal);
-                  setProductoSeleccionado(null);
-                  setCarritoAbierto(true);
+                  cerrarModalProducto();
+                  abrirCarrito();
                 }}
                 className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
                   productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0
@@ -596,15 +720,21 @@ export default function CatalogoPage() {
 
       {/* Drawer del Carrito */}
       {carritoAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
-          <div className="w-full max-w-md bg-white h-full flex flex-col p-5 shadow-2xl animate-in slide-in-from-right duration-150">
+        <div 
+          onClick={cerrarCarrito}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white h-full flex flex-col p-5 shadow-2xl animate-in slide-in-from-right duration-150"
+          >
             <div className="flex justify-between items-center pb-3 border-b border-neutral-200">
               <h2 className="text-base font-bold flex items-center gap-2 text-neutral-900">
                 <ShoppingCart className="w-5 h-5 text-cyan-600" />
                 Tu Carrito ({totalArticulos})
               </h2>
               <button
-                onClick={() => setCarritoAbierto(false)}
+                onClick={cerrarCarrito}
                 className="p-1.5 hover:bg-neutral-100 rounded-full text-neutral-400 hover:text-neutral-700"
               >
                 <X className="w-5 h-5" />

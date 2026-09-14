@@ -4,6 +4,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "El Bazar Cubides",
   description: "Venta de garage y tesoros guardados",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
