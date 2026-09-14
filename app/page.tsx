@@ -34,6 +34,7 @@ const RANGOS_PRECIO = [
 
 export default function CatalogoPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<string>("todas");
   const [rangoPrecioSeleccionado, setRangoPrecioSeleccionado] = useState<string>("todos");
@@ -265,7 +266,16 @@ export default function CatalogoPage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] text-neutral-900 selection:bg-[#0092B8] selection:text-white pb-20 relative flex flex-col justify-between font-sans">
+  <div className="min-h-screen bg-gradient-to-b from-[#e8f7fa] via-[#f4fafb] to-white text-neutral-900 selection:bg-[#0092B8] selection:text-white pb-20 relative flex flex-col justify-between font-sans">
+    
+    {/* Patrón de micropuntos turquesa sutil */}
+    <div 
+      className="fixed inset-0 pointer-events-none opacity-40 z-0"
+      style={{
+        backgroundImage: `radial-gradient(#0092B8 0.75px, transparent 0.75px)`,
+        backgroundSize: '16px 16px'
+      }}
+    />
       
       {/* Toast de Enlace Copiado */}
       {copiadoToast && (
@@ -276,10 +286,10 @@ export default function CatalogoPage() {
 
       <div>
         {/* Banner Superior Minimalista */}
-        <div className="bg-[#0f172a] text-white text-xs py-2 px-4 shadow-xs relative z-40">
+        <div className="bg-gradient-to-r from-[#0092B8] via-[#0081a2] to-[#e6b849] text-white text-xs py-2 px-4 shadow-xs relative z-40">
           <div className="max-w-6xl mx-auto flex items-center justify-between text-[11px] sm:text-xs">
             <div className="flex items-center gap-2">
-              <Truck className="w-3.5 h-3.5 text-amber-300" />
+              <Truck className="w-3.5 h-3.5 text-amber-300 animate-bounce" />
               <span><strong>Delivery Gratis</strong> en compras mayores a <strong>$25</strong></span>
             </div>
 
@@ -328,9 +338,9 @@ export default function CatalogoPage() {
 
             {/* Carrito Circular */}
             <button
-              onClick={abrirCarrito}
-              className="relative p-2.5 bg-neutral-900 hover:bg-[#0092B8] text-white rounded-full transition-colors shrink-0 shadow-sm active:scale-95"
-            >
+  onClick={abrirCarrito}
+  className="relative p-2.5 bg-[#0092B8] hover:bg-[#007f9f] text-white rounded-full transition-all shrink-0 shadow-sm shadow-[#0092B8]/25 active:scale-110"
+>
               <ShoppingCart className="w-4 h-4" />
               {totalArticulos > 0 && (
                 <span className="absolute -top-1 -right-1 bg-amber-400 text-neutral-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
@@ -371,25 +381,43 @@ export default function CatalogoPage() {
               })}
             </div>
 
-            {/* Filtro Rápido de Precios */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pt-1.5 pb-0.5 scrollbar-none text-[11px] border-t border-neutral-100">
-              <span className="text-neutral-400 font-medium shrink-0 flex items-center gap-1">
-                <SlidersHorizontal className="w-3 h-3 text-[#0092B8]" /> Filtro:
-              </span>
-              {RANGOS_PRECIO.map((rango) => (
-                <button
-                  key={rango.id}
-                  onClick={() => setRangoPrecioSeleccionado(rango.id)}
-                  className={`px-2.5 py-0.5 rounded-md whitespace-nowrap font-medium transition-colors ${
-                    rangoPrecioSeleccionado === rango.id
-                      ? "bg-neutral-900 text-white"
-                      : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-                  }`}
-                >
-                  {rango.label}
-                </button>
-              ))}
-            </div>
+            {/* Filtro de Precios Expandible */}
+<div className="flex items-center gap-2 overflow-x-auto pt-2 pb-1 scrollbar-none text-[11px] border-t border-neutral-100">
+  <button
+    type="button"
+    onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}
+    className={`px-3 py-1 rounded-full font-semibold flex items-center gap-1.5 transition-all shrink-0 shadow-2xs ${
+      filtrosAbiertos || rangoPrecioSeleccionado !== "todos"
+        ? "bg-[#0092B8] text-white"
+        : "bg-white text-neutral-700 border border-neutral-200/80 hover:bg-neutral-50"
+    }`}
+  >
+    <SlidersHorizontal className="w-3 h-3" />
+    <span>Filtrar precio</span>
+    {rangoPrecioSeleccionado !== "todos" && (
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-300" />
+    )}
+  </button>
+
+  {/* Opciones que se despliegan hacia la derecha */}
+  {filtrosAbiertos && (
+    <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-left-2 duration-150">
+      {RANGOS_PRECIO.map((rango) => (
+        <button
+          key={rango.id}
+          onClick={() => setRangoPrecioSeleccionado(rango.id)}
+          className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium text-[11px] transition-all ${
+            rangoPrecioSeleccionado === rango.id
+              ? "bg-neutral-900 text-white shadow-xs"
+              : "bg-white text-neutral-600 border border-neutral-200/80 hover:bg-neutral-50"
+          }`}
+        >
+          {rango.label}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
           </div>
         </header>
 
@@ -400,10 +428,9 @@ export default function CatalogoPage() {
               <div className="flex items-center gap-1.5">
                 <Sparkle className="w-3.5 h-3.5 text-[#0092B8]" />
                 <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                  Recién Agregados
+                  Últimos productos agregados
                 </h2>
               </div>
-              <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider">Últimos tesoros</span>
             </div>
 
             {/* Carrusel horizontal continuo sin cortes */}
@@ -575,156 +602,167 @@ export default function CatalogoPage() {
         </Link>
       </footer>
 
-      {/* Modal Ficha Técnica estilo LARQ (fondo limpio, tipografía espaciosa, sin cajas grises) */}
+      {/* Modal Ficha de Producto - Pantalla Completa Móvil Flotante */}
       {productoSeleccionado && (
         <div 
           onClick={cerrarModalProducto}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto flex flex-col shadow-2xl border border-neutral-200/80 animate-in slide-in-from-bottom duration-200"
+            className="w-full sm:max-w-lg bg-white h-[92vh] sm:h-auto sm:max-h-[88vh] rounded-t-[2rem] sm:rounded-3xl flex flex-col shadow-2xl border border-neutral-200 overflow-hidden animate-in slide-in-from-bottom duration-250"
           >
-            {/* Barra superior modal */}
-            <div className="px-5 py-3.5 border-b border-neutral-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-xs z-10">
-              <span className="text-[10px] font-bold tracking-widest text-[#0092B8] uppercase bg-[#0092B8]/10 px-2.5 py-0.5 rounded-full">
-                {productoSeleccionado.categorias?.nombre || "Artículo"}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => compartirProducto(productoSeleccionado)}
-                  className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-neutral-900 transition-colors"
-                  title="Compartir"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={cerrarModalProducto}
-                  className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-neutral-900 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Galería grande con fondo neutro */}
-            <div className="relative aspect-square w-full bg-[#f8f9fa] overflow-hidden flex items-center justify-center">
-              {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 0 ? (
-                <Image
-                  src={productoSeleccionado.fotos[modalFotoIndex] || productoSeleccionado.fotos[0]}
-                  alt={productoSeleccionado.titulo}
-                  fill
-                  className="object-contain p-4"
-                />
-              ) : (
-                <div className="text-neutral-400 text-xs">Sin fotos</div>
-              )}
-
-              {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 1 && (
-                <>
-                  <button
-                    onClick={() => setModalFotoIndex((prev) => (prev - 1 + productoSeleccionado.fotos.length) % productoSeleccionado.fotos.length)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-white/80 hover:bg-white text-neutral-800 rounded-full shadow-xs transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setModalFotoIndex((prev) => (prev + 1) % productoSeleccionado.fotos.length)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white/80 hover:bg-white text-neutral-800 rounded-full shadow-xs transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  
-                  <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-xs text-white text-[10px] font-medium px-2.5 py-0.5 rounded-full">
-                    {modalFotoIndex + 1} / {productoSeleccionado.fotos.length}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Contenido Ficha */}
-            <div className="p-5 space-y-4">
-              <div>
-                {productoSeleccionado.marca && (
-                  <p className="text-[10px] font-bold text-[#0092B8] uppercase tracking-wider mb-0.5">
-                    {productoSeleccionado.marca}
-                  </p>
-                )}
-                <div className="flex justify-between items-start gap-4">
-                  <h2 className="text-lg sm:text-xl font-bold text-neutral-900 leading-snug">
-                    {productoSeleccionado.titulo}
-                  </h2>
-                  <div className="text-right shrink-0">
-                    <div className="text-xl sm:text-2xl font-semibold text-[#0092B8] leading-none">
-                      ${Number(productoSeleccionado.precio).toFixed(2)}
-                    </div>
-                    {tasaBcv && (
-                      <div className="text-xs text-neutral-500 font-medium mt-1">
-                        ≈ Bs. {formatoBs(Number(productoSeleccionado.precio))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Pills de Especificaciones */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-                <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
-                  {productoSeleccionado.cantidad ?? 1} disponible
+            {/* Cabecera Móvil con barra de arrastre */}
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md z-30 px-5 pt-3 pb-2.5 border-b border-neutral-100 flex flex-col gap-2 shrink-0">
+              <div className="w-10 h-1 bg-neutral-200 rounded-full mx-auto sm:hidden" />
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold tracking-widest text-[#0092B8] uppercase bg-[#0092B8]/10 px-3 py-1 rounded-full">
+                  {productoSeleccionado.categorias?.nombre || "Artículo"}
                 </span>
-                {productoSeleccionado.condicion && (
-                  <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
-                    {productoSeleccionado.condicion}
-                  </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => compartirProducto(productoSeleccionado)}
+                    className="p-2 rounded-full hover:bg-neutral-100 text-neutral-600 hover:text-neutral-900 transition-colors"
+                    title="Compartir"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={cerrarModalProducto}
+                    className="p-2 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-neutral-900 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Contenido scrolleable con min-h-0 para evitar cortes */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              {/* Contenedor de la Imagen con altura fija real */}
+              <div className="relative w-full h-72 sm:h-80 bg-[#f4f5f7] flex items-center justify-center overflow-hidden shrink-0">
+                {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 0 ? (
+                  <Image
+                    src={productoSeleccionado.fotos[modalFotoIndex] || productoSeleccionado.fotos[0]}
+                    alt={productoSeleccionado.titulo}
+                    fill
+                    priority
+                    sizes="(max-width: 640px) 100vw, 500px"
+                    className="object-contain p-4 select-none"
+                  />
+                ) : (
+                  <div className="text-neutral-400 text-xs">Sin fotos disponibles</div>
                 )}
-                {productoSeleccionado.funcionalidad && (
-                  <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
-                    {productoSeleccionado.funcionalidad}
-                  </span>
-                )}
-                {(productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0) && (
-                  <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full font-bold">
-                    Agotado
-                  </span>
+
+                {/* Controles de fotos */}
+                {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setModalFotoIndex((prev) => (prev - 1 + productoSeleccionado.fotos.length) % productoSeleccionado.fotos.length)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-white/90 hover:bg-white text-neutral-800 rounded-full shadow-md transition-all active:scale-90"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setModalFotoIndex((prev) => (prev + 1) % productoSeleccionado.fotos.length)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white/90 hover:bg-white text-neutral-800 rounded-full shadow-md transition-all active:scale-90"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    
+                    <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-xs text-white text-[10px] font-medium px-2.5 py-0.5 rounded-full">
+                      {modalFotoIndex + 1} / {productoSeleccionado.fotos.length}
+                    </div>
+                  </>
                 )}
               </div>
 
-              {/* Descripción Natural sin cajas toscas */}
-              {productoSeleccionado.descripcion && (
-                <div className="pt-2 border-t border-neutral-100">
-                  <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed whitespace-pre-line">
-                    {productoSeleccionado.descripcion}
-                  </p>
-                </div>
-              )}
-
-              {/* Selector de Cantidad */}
-              {productoSeleccionado.estado !== 'vendido' && (productoSeleccionado.cantidad ?? 1) > 1 && (
-                <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-2xl border border-neutral-200/60">
-                  <span className="text-xs font-medium text-neutral-700">Cantidad a comprar:</span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCantidadModal(Math.max(1, cantidadModal - 1))}
-                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="text-xs font-bold text-neutral-900 min-w-4 text-center">
-                      {cantidadModal}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setCantidadModal(Math.min(productoSeleccionado.cantidad ?? 1, cantidadModal + 1))}
-                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
+              {/* Información del Producto */}
+              <div className="p-5 space-y-4">
+                <div>
+                  {productoSeleccionado.marca && (
+                    <p className="text-[10px] font-bold text-[#0092B8] uppercase tracking-wider mb-1">
+                      {productoSeleccionado.marca}
+                    </p>
+                  )}
+                  <div className="flex justify-between items-start gap-3">
+                    <h2 className="text-lg sm:text-xl font-bold text-neutral-900 leading-snug">
+                      {productoSeleccionado.titulo}
+                    </h2>
+                    <div className="text-right shrink-0">
+                      <div className="text-xl sm:text-2xl font-bold text-[#0092B8] leading-none">
+                        ${Number(productoSeleccionado.precio).toFixed(2)}
+                      </div>
+                      {tasaBcv && (
+                        <div className="text-xs text-neutral-500 font-medium mt-1">
+                          ≈ Bs. {formatoBs(Number(productoSeleccionado.precio))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {/* Botón Principal estilo LARQ */}
+                {/* Especificaciones en Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                  <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
+                    {productoSeleccionado.cantidad ?? 1} disponible
+                  </span>
+                  {productoSeleccionado.condicion && (
+                    <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
+                      {productoSeleccionado.condicion}
+                    </span>
+                  )}
+                  {productoSeleccionado.funcionalidad && (
+                    <span className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full font-medium">
+                      {productoSeleccionado.funcionalidad}
+                    </span>
+                  )}
+                  {(productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0) && (
+                    <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full font-bold">
+                      Agotado
+                    </span>
+                  )}
+                </div>
+
+                {/* Descripción amplia sin recortarse */}
+                {productoSeleccionado.descripcion && (
+                  <div className="pt-3 border-t border-neutral-100">
+                    <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed whitespace-pre-line font-normal">
+                      {productoSeleccionado.descripcion}
+                    </p>
+                  </div>
+                )}
+
+                {/* Selector de cantidad */}
+                {productoSeleccionado.estado !== 'vendido' && (productoSeleccionado.cantidad ?? 1) > 1 && (
+                  <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-2xl border border-neutral-200/80">
+                    <span className="text-xs font-semibold text-neutral-700">Cantidad a llevar:</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCantidadModal(Math.max(1, cantidadModal - 1))}
+                        className="p-1.5 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100 active:scale-95"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-sm font-bold text-neutral-900 min-w-4 text-center">
+                        {cantidadModal}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCantidadModal(Math.min(productoSeleccionado.cantidad ?? 1, cantidadModal + 1))}
+                        className="p-1.5 rounded-lg bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100 active:scale-95"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Barra fija inferior con botón de acción */}
+            <div className="p-4 sm:p-5 border-t border-neutral-100 bg-white/95 backdrop-blur-md shrink-0">
               <button
                 disabled={productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0}
                 onClick={() => {
@@ -732,10 +770,10 @@ export default function CatalogoPage() {
                   cerrarModalProducto();
                   abrirCarrito();
                 }}
-                className={`w-full py-3.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm ${
+                className={`w-full py-3.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.99] ${
                   productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0
                     ? "bg-neutral-100 text-neutral-400 cursor-not-allowed border border-neutral-200"
-                    : "bg-[#0092B8] hover:bg-[#007f9f] text-white shadow-[#0092B8]/20 active:scale-[0.99]"
+                    : "bg-[#0092B8] hover:bg-[#007f9f] text-white shadow-[#0092B8]/25"
                 }`}
               >
                 {productoSeleccionado.estado === 'vendido' || (productoSeleccionado.cantidad ?? 1) <= 0 ? (
