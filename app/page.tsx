@@ -38,38 +38,58 @@ export default function CatalogoPage() {
   const [tasaBcv, setTasaBcv] = useState<number | null>(null);
 
   useEffect(() => {
-    cargarDatos();
-    obtenerTasaBcv();
+    // 1. Cargar datos cacheados inmediatamente para evitar la pantalla en blanco
+    const cachedProds = localStorage.getItem("bazar_prods_cache");
+    const cachedCats = localStorage.getItem("bazar_cats_cache");
+    const cachedBcv = localStorage.getItem("bazar_bcv_cache");
+
+    if (cachedProds && cachedCats) {
+      try {
+        setProductos(JSON.parse(cachedProds));
+        setCategorias(JSON.parse(cachedCats));
+        if (cachedBcv) setTasaBcv(Number(cachedBcv));
+        setLoading(false);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // 2. Traer los datos frescos en paralelo
+    cargarDatosFrescos();
   }, []);
 
-  async function obtenerTasaBcv() {
+  async function cargarDatosFrescos() {
     try {
-      const res = await fetch("https://ve.dolarapi.com/v1/dolares/oficial");
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.promedio) {
-          setTasaBcv(Number(data.promedio));
-        }
+      const [catsRes, prodsRes, bcvRes] = await Promise.allSettled([
+        supabase.from("categorias").select("*").order("nombre"),
+        supabase.from("productos").select("*, categorias(*)").order("created_at", { ascending: false }),
+        fetch("https://ve.dolarapi.com/v1/dolares/oficial").then((r) => r.json()),
+      ]);
+
+      if (catsRes.status === "fulfilled" && catsRes.value.data) {
+        setCategorias(catsRes.value.data);
+        localStorage.setItem("bazar_cats_cache", JSON.stringify(catsRes.value.data));
+      }
+
+      if (prodsRes.status === "fulfilled" && prodsRes.value.data) {
+        const prods = prodsRes.value.data as Producto[];
+        setProductos(prods);
+        localStorage.setItem("bazar_prods_cache", JSON.stringify(prods));
+      }
+
+      if (bcvRes.status === "fulfilled" && bcvRes.value?.promedio) {
+        const val = Number(bcvRes.value.promedio);
+        setTasaBcv(val);
+        localStorage.setItem("bazar_bcv_cache", String(val));
       }
     } catch (e) {
-      console.error("No se pudo obtener la tasa BCV automática", e);
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function cargarDatos() {
-    setLoading(true);
-    const { data: cats } = await supabase.from("categorias").select("*").order("nombre");
-    const { data: prods } = await supabase
-      .from("productos")
-      .select("*, categorias(*)")
-      .order("created_at", { ascending: false });
-
-    if (cats) setCategorias(cats);
-    if (prods) setProductos(prods as Producto[]);
-    setLoading(false);
-  }
-
-  // Formateador a Bolívares
+  // Formateador de Bolívares
   const formatoBs = (montoUsd: number) => {
     if (!tasaBcv) return null;
     const totalBs = montoUsd * tasaBcv;
@@ -160,10 +180,10 @@ export default function CatalogoPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#fafaf9] text-neutral-800 selection:bg-cyan-500 selection:text-white pb-20 relative flex flex-col justify-between">
-      {/* Patrón de fondo */}
+    <div className="min-h-screen bg-[#fcfcfc] text-neutral-800 selection:bg-cyan-500 selection:text-white pb-20 relative flex flex-col justify-between">
+      {/* Fondo sutil */}
       <div 
-        className="fixed inset-0 pointer-events-none opacity-[0.035] z-0"
+        className="fixed inset-0 pointer-events-none opacity-[0.03] z-0"
         style={{
           backgroundImage: `radial-gradient(#0891b2 1px, transparent 1px)`,
           backgroundSize: '16px 16px'
@@ -171,30 +191,29 @@ export default function CatalogoPage() {
       />
 
       <div>
-        {/* Banner Promocional con Tasa BCV */}
-        <div className="bg-gradient-to-r from-teal-700 via-cyan-700 to-teal-600 text-white text-xs font-semibold py-1.5 px-3 shadow-sm relative z-40">
+        {/* Banner Promocional y Monitor BCV */}
+        <div className="bg-gradient-to-r from-teal-700 via-cyan-700 to-teal-600 text-white text-xs font-semibold py-1.5 px-3 shadow-xs relative z-40">
           <div className="max-w-6xl mx-auto flex items-center justify-between text-[11px] sm:text-xs">
             <div className="flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5 text-yellow-300 animate-bounce shrink-0" />
               <span><strong>Delivery Gratis</strong> desde <strong>$25</strong></span>
             </div>
 
-            {/* Monitor Tasa BCV */}
-            <div className="flex items-center gap-1.5 bg-teal-900/50 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-teal-500/30">
+            <div className="flex items-center gap-1.5 bg-teal-900/50 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-teal-500/30 text-[10px] sm:text-xs">
               <Coins className="w-3 h-3 text-teal-200 shrink-0" />
               <span>
-                BCV: {tasaBcv ? `Bs. ${tasaBcv.toFixed(2)}` : "Actualizando..."}
+                BCV: {tasaBcv ? `Bs. ${tasaBcv.toFixed(2)}` : "Cargando..."}
               </span>
             </div>
           </div>
         </div>
 
         {/* Header */}
-        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 shadow-xs">
+        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/70 shadow-2xs">
           <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 flex items-center gap-3">
             {/* Logo y Nombre */}
             <div className="flex items-center gap-2 shrink-0">
-              <div className="relative w-9 h-9 shrink-0 flex items-center justify-center">
+              <div className="relative w-8 h-8 sm:w-9 sm:h-9 shrink-0 flex items-center justify-center">
                 <Image 
                   src="/logo.png" 
                   alt="El Bazar Cubides Logo" 
@@ -211,19 +230,19 @@ export default function CatalogoPage() {
               </div>
             </div>
 
-            {/* Barra de Búsqueda */}
+            {/* Buscador */}
             <div className="flex-1 relative flex items-center">
               <Search className="w-4 h-4 absolute left-3 text-neutral-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Buscar productos, marcas..."
+                placeholder="Buscar artículos..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-cyan-500 rounded-full text-xs outline-none transition-all leading-normal"
+                className="w-full pl-9 pr-3 py-1.5 sm:py-2 bg-neutral-100 focus:bg-white border border-neutral-200 focus:border-cyan-500 rounded-full text-xs outline-none transition-all"
               />
             </div>
 
-            {/* Botón Carrito */}
+            {/* Carrito */}
             <button
               onClick={() => setCarritoAbierto(true)}
               className="relative p-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-full transition-all shrink-0 shadow-sm shadow-cyan-600/30"
@@ -272,9 +291,16 @@ export default function CatalogoPage() {
 
         {/* Grid del Catálogo */}
         <main className="max-w-6xl mx-auto px-2 sm:px-4 pt-3 relative z-10">
-          {loading ? (
-            <div className="text-center py-20 text-neutral-400 text-xs font-medium">
-              Cargando el bazar...
+          {loading && productos.length === 0 ? (
+            /* Skeleton Loader inmediato */
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-neutral-200 p-2 animate-pulse space-y-2">
+                  <div className="aspect-square bg-neutral-200 rounded-lg w-full" />
+                  <div className="h-3 bg-neutral-200 rounded w-3/4" />
+                  <div className="h-3 bg-neutral-200 rounded w-1/2" />
+                </div>
+              ))}
             </div>
           ) : productosFiltrados.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-2xl border border-neutral-200/70 p-6 mx-2 mt-4 shadow-xs">
@@ -301,7 +327,7 @@ export default function CatalogoPage() {
                       esVendido ? "border-red-200/70 opacity-60 bg-red-50/10" : "border-neutral-200/80 hover:border-cyan-400"
                     }`}
                   >
-                    {/* Contenedor Imagen */}
+                    {/* Contenedor Imagen limpia (Sin precios encima) */}
                     <div className="relative aspect-square w-full bg-neutral-100 overflow-hidden">
                       {fotos[0] !== "/placeholder.png" ? (
                         <Image
@@ -326,41 +352,41 @@ export default function CatalogoPage() {
 
                       {/* Stock disponible si hay más de 1 */}
                       {!esVendido && stock > 1 && (
-                        <div className="absolute top-1 left-1 bg-cyan-900/80 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                        <div className="absolute top-1 left-1 bg-neutral-900/70 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
                           {stock} disp.
                         </div>
                       )}
-
-                      {/* Badge Precio USD y Bs */}
-                      <div className="absolute bottom-1 right-1 bg-neutral-900/90 backdrop-blur-xs text-white text-right px-1.5 py-0.5 rounded-md leading-tight">
-                        <div className="text-[11px] font-black">
-                          ${Number(prod.precio).toFixed(0)}
-                        </div>
-                        {tasaBcv && (
-                          <div className="text-[8px] text-teal-300 font-medium">
-                            Bs. {formatoBs(Number(prod.precio))}
-                          </div>
-                        )}
-                      </div>
                     </div>
 
-                    {/* Info */}
-                    <div className="p-1.5 sm:p-2 flex flex-col justify-between flex-1 gap-1">
-                      <div>
+                    {/* Información y Precios limpios abajo */}
+                    <div className="p-2 flex flex-col justify-between flex-1 gap-2">
+                      <div className="space-y-1">
                         {prod.marca && (
                           <p className="text-[9px] text-cyan-700 font-bold uppercase tracking-wider truncate">
                             {prod.marca}
                           </p>
                         )}
-                        <h3 className="font-semibold text-neutral-900 text-[11px] sm:text-xs leading-tight line-clamp-2">
+                        <h3 className="font-semibold text-neutral-900 text-[11px] sm:text-xs leading-snug line-clamp-2">
                           {prod.titulo}
                         </h3>
+
+                        {/* Bloque de Precio limpio */}
+                        <div className="pt-0.5">
+                          <div className="text-xs sm:text-sm font-black text-neutral-900 leading-none">
+                            ${Number(prod.precio).toFixed(0)}
+                          </div>
+                          {tasaBcv && (
+                            <div className="text-[9px] text-teal-700 font-semibold tracking-tight mt-0.5">
+                              Bs. {formatoBs(Number(prod.precio))}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <button
                         disabled={esVendido}
                         onClick={(e) => agregarAlCarrito(prod, 1, e)}
-                        className={`w-full py-1 px-1 rounded-md text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                        className={`w-full py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
                           esVendido
                             ? "bg-neutral-100 text-neutral-400 cursor-not-allowed"
                             : enCarrito
@@ -369,8 +395,8 @@ export default function CatalogoPage() {
                         }`}
                       >
                         {esVendido ? "Agotado" : enCarrito ? <CheckCircle2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                        <span className="hidden min-[400px]:inline">
-                          {esVendido ? "" : enCarrito ? "Listo" : "Llevar"}
+                        <span>
+                          {esVendido ? "" : enCarrito ? "Listo" : "Agregar"}
                         </span>
                       </button>
                     </div>
@@ -382,7 +408,7 @@ export default function CatalogoPage() {
         </main>
       </div>
 
-      {/* Footer discreto con botón de Admin */}
+      {/* Footer con acceso de Admin */}
       <footer className="max-w-6xl mx-auto w-full px-4 pt-12 pb-4 text-center text-neutral-400 text-xs flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-neutral-200/60 mt-8 relative z-10">
         <p className="text-[11px]">
           © {new Date().getFullYear()} El Bazar Cubides • Caracas, Venezuela
@@ -420,7 +446,7 @@ export default function CatalogoPage() {
               </button>
             </div>
 
-            {/* Galería */}
+            {/* Galería grande */}
             <div className="relative aspect-4/3 w-full bg-neutral-900 overflow-hidden">
               {productoSeleccionado.fotos && productoSeleccionado.fotos.length > 0 ? (
                 <Image
@@ -460,7 +486,7 @@ export default function CatalogoPage() {
               )}
             </div>
 
-            {/* Info completa */}
+            {/* Información en Modal */}
             <div className="p-5 space-y-4">
               <div>
                 <div className="flex justify-between items-start gap-2 mb-1">
@@ -472,7 +498,7 @@ export default function CatalogoPage() {
                       ${Number(productoSeleccionado.precio).toFixed(2)}
                     </div>
                     {tasaBcv && (
-                      <div className="text-xs text-neutral-500 font-bold mt-0.5">
+                      <div className="text-xs text-neutral-500 font-bold mt-1">
                         ≈ Bs. {formatoBs(Number(productoSeleccionado.precio))}
                       </div>
                     )}
@@ -483,7 +509,7 @@ export default function CatalogoPage() {
                 )}
               </div>
 
-              {/* Cápsulas */}
+              {/* Cápsulas de Estado, Stock y Funcionalidad */}
               <div className="flex flex-wrap gap-2 pt-1 border-t border-neutral-100">
                 <span className="text-[11px] px-2.5 py-1 bg-cyan-100/70 text-cyan-900 font-bold rounded-lg">
                   Disponibles: {productoSeleccionado.cantidad ?? 1} unid.
